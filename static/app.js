@@ -48,11 +48,16 @@ function switchTab(tab) {
     // Close sidebar on mobile after clicking
     if (window.innerWidth <= 768) {
         document.getElementById("sidebar").classList.remove("open");
+        const overlay = document.getElementById("sidebar-overlay");
+        if (overlay) overlay.classList.remove("active");
     }
 }
 
 function toggleSidebar() {
-    document.getElementById("sidebar").classList.toggle("open");
+    const sidebar = document.getElementById("sidebar");
+    sidebar.classList.toggle("open");
+    const overlay = document.getElementById("sidebar-overlay");
+    if (overlay) overlay.classList.toggle("active");
 }
 
 // ================================

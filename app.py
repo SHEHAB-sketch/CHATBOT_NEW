@@ -100,7 +100,17 @@ def get_next_model():
     # هنا بنبعت الداتا كلها مرة واحدة في الـ system_instruction
     return genai.GenerativeModel(model_name, system_instruction=SYSTEM_INSTRUCTION)
 
-model = get_next_model()
+try:
+    model = get_next_model()
+except Exception as e:
+    print(f"Warning: Could not initialize Gemini model: {e}")
+    class MockModel:
+        def generate_content(self, *args, **kwargs):
+            return type('obj', (object,), {'text': 'AI Error: No API keys configured.'})
+        def start_chat(self, *args, **kwargs):
+            return type('obj', (object,), {'send_message': lambda msg: type('obj', (object,), {'text': 'AI Error: No API keys configured.'})})
+    model = MockModel()
+
 response_cache = {}
 
 # Logic handled via SYSTEM_INSTRUCTION above

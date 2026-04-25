@@ -500,10 +500,81 @@ textarea#chat-input:focus { border-color: var(--accent); }
 /* ================================
    RESPONSIVE
 ================================ */
-@media (max-width: 768px) {
-  header { padding: 14px 18px; }
-  .tabs { padding: 10px 18px; }
-  .req-layout { grid-template-columns: 1fr; }
-  #tab-requirements { padding: 18px 14px; }
-  .bubble { max-width: 88%; }
+/* ================================
+   SIDEBAR OVERLAY
+   ================================ */
+.sidebar-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 85;
+  opacity: 0;
+  display: none;
+  transition: opacity 0.3s ease;
 }
+.sidebar-overlay.active {
+  display: block;
+  opacity: 1;
+}
+
+/* ================================
+   RESPONSIVE
+   ================================ */
+@media (max-width: 992px) {
+  .req-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  /* Header adjustments */
+  header { padding: 10px 16px; }
+  .sidebar-toggle { display: block; margin-right: 8px; }
+  .logo-icon { font-size: 1.4rem; }
+  .logo-title { font-size: 0.9rem; }
+  .logo-sub { font-size: 0.6rem; }
+  .header-actions { display: none; } /* Hide status on very small screens if crowded */
+
+  /* Sidebar transition to overlay */
+  .sidebar {
+    position: fixed;
+    top: 65px;
+    left: 0;
+    height: calc(100vh - 65px);
+    transform: translateX(-100%);
+    width: 280px;
+    background: rgba(10,14,26,0.95);
+    box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  /* Main content full width */
+  .app-layout { margin-top: 60px; height: calc(100vh - 60px); }
+  main { width: 100%; }
+
+  /* Chat adjustments */
+  .chat-container { padding: 0 12px; }
+  .bubble { max-width: 92%; padding: 10px 14px; font-size: 0.85rem; }
+  .avatar { width: 32px; height: 32px; font-size: 1rem; }
+  
+  .chat-input-area { padding: 12px 0 15px; }
+  .quick-chips { gap: 6px; padding-bottom: 8px; }
+  .chip { padding: 5px 12px; font-size: 0.72rem; }
+  
+  /* Requirements tab adjustments */
+  #tab-requirements { padding: 15px 12px; }
+  .card { padding: 20px; }
+  .req-header h2 { font-size: 1.3rem; }
+  .quick-status { grid-template-columns: 1fr; gap: 6px; }
+  .stat-item { padding: 6px 10px; font-size: 0.75rem; }
+  .check-btn { padding: 12px; font-size: 0.9rem; }
+  
+  .result-text { font-size: 0.8rem; padding: 14px; }
+}
+
+@media (max-width: 480px) {
+  .logo-sub { display: none; } /* Hide subtext on tiny screens */
+  .bubble { max-width: 95%; }
+  .send-btn { width: 42px; height: 42px; }
+}
+
