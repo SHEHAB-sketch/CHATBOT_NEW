@@ -14,13 +14,6 @@ CORS(app)
 ENV_KEYS = os.environ.get("GEMINI_API_KEYS", "").split(",")
 API_KEYS = [k.strip() for k in ENV_KEYS if k.strip()]
 
-if not API_KEYS:
-    API_KEYS = [
-        "AIzaSyA3ZKKBctVYEz7qOq4aQDRwR3FMhgdg4XA",
-        "AIzaSyAZyGwt0w1tAVHnT53OjzL3ItY4qp4MV7k",
-        "AIzaSyBrI6aCmBZv_zjoKEoogtr775cUDpu9HTQ",
-    ]
-
 # بنبدل بين الموديلات دي عشان كل واحد ليه ليميت لوحده!
 MODEL_VERSIONS = [
     "gemini-2.0-flash",
@@ -125,35 +118,24 @@ import difflib
 def find_local_match(user_query):
     if not CHATBOT_CONTEXT:
         return None
-    
-    # Split content into lines and find sentences
-    lines = [line.strip() for line in CHATBOT_CONTEXT.split('\n') if line.strip()]
-    
-    # Simple similarity check against questions/lines
-    # We look for lines that starts with 'س:' (Question) to match against
-    questions = [line for line in lines if "س:" in line]
-    
-    if not questions:
-        # Fallback to checking all lines if no specific Q: prefix exists
-        matches = difflib.get_close_matches(user_query, lines, n=1, cutoff=0.45)
-        if matches:
-            return matches[0]
-    else:
-        # Match against questions but return the corresponding answer (the line after)
-        clean_questions = [q.replace("س:", "").strip() for q in questions]
-        matches = difflib.get_close_matches(user_query, clean_questions, n=1, cutoff=0.5)
-        
-        if matches:
-            # Find the original question line to get the index
-            matched_q = matches[0]
-            for i, line in enumerate(lines):
-                if matched_q in line and "س:" in line:
-                    # Return the matched question + the answer (usually the next line)
-                    answer = lines[i+1] if i+1 < len(lines) else ""
-                    return f"📚 (من اللائحة):\n{line}\n{answer}"
-    
-    return None
 
+    lines = [
+        line.strip()
+        for line in CHATBOT_CONTEXT.split("\n")
+        if line.strip()
+    ]
+
+    matches = difflib.get_close_matches(
+        user_query,
+        lines,
+        n=1,
+        cutoff=0.3
+    )
+
+    if matches:
+        return "📚 (من اللائحة): " + matches[0]
+
+    return None
 # --------------------------
 # 🔹 /chat Endpoint
 # --------------------------
