@@ -1,4 +1,37 @@
 ---
+Student 1: GPA 3.9, attendance 95%, study hours 25, failed subjects 0, academic score 92, major CS, level Senior, risk Low.
+Student 2: GPA 3.8, attendance 92%, study hours 24, failed subjects 0, academic score 91, major IT, level Senior, risk Low.
+Student 3: GPA 3.7, attendance 90%, study hours 23, failed subjects 0, academic score 89, major IS, level Junior, risk Low.
+Student 4: GPA 3.6, attendance 88%, study hours 22, failed subjects 0, academic score 87, major CS, level Junior, risk Low.
+Student 5: GPA 3.5, attendance 85%, study hours 21, failed subjects 0, academic score 85, major IT, level Junior, risk Low.
+Student 6: GPA 3.4, attendance 87%, study hours 20, failed subjects 0, academic score 84, major CS, level Sophomore, risk Low.
+Student 7: GPA 3.3, attendance 84%, study hours 20, failed subjects 0, academic score 83, major IS, level Sophomore, risk Low.
+Student 8: GPA 3.2, attendance 82%, study hours 19, failed subjects 1, academic score 80, major CS, level Sophomore, risk Low.
+
+Student 9: GPA 3.0, attendance 78%, study hours 18, failed subjects 1, academic score 76, major CS, level Junior, risk Medium.
+Student 10: GPA 2.9, attendance 75%, study hours 17, failed subjects 1, academic score 75, major IS, level Junior, risk Medium.
+Student 11: GPA 2.8, attendance 73%, study hours 16, failed subjects 2, academic score 73, major IT, level Sophomore, risk Medium.
+Student 12: GPA 2.7, attendance 72%, study hours 15, failed subjects 2, academic score 72, major CS, level Sophomore, risk Medium.
+Student 13: GPA 2.6, attendance 70%, study hours 15, failed subjects 2, academic score 70, major IS, level Sophomore, risk Medium.
+Student 14: GPA 2.5, attendance 68%, study hours 14, failed subjects 2, academic score 68, major IT, level Sophomore, risk Medium.
+Student 15: GPA 2.4, attendance 65%, study hours 13, failed subjects 3, academic score 66, major CS, level Freshman, risk Medium.
+Student 16: GPA 2.3, attendance 67%, study hours 14, failed subjects 2, academic score 67, major IS, level Freshman, risk Medium.
+Student 17: GPA 2.2, attendance 64%, study hours 13, failed subjects 3, academic score 65, major IT, level Freshman, risk Medium.
+Student 18: GPA 2.1, attendance 66%, study hours 14, failed subjects 2, academic score 67, major CS, level Freshman, risk Medium.
+
+Student 19: GPA 2.0, attendance 60%, study hours 12, failed subjects 3, academic score 60, major CS, level Sophomore, risk High.
+Student 20: GPA 1.9, attendance 58%, study hours 11, failed subjects 3, academic score 58, major IS, level Sophomore, risk High.
+Student 21: GPA 1.8, attendance 55%, study hours 10, failed subjects 4, academic score 55, major IT, level Freshman, risk High.
+Student 22: GPA 1.7, attendance 53%, study hours 9, failed subjects 4, academic score 53, major CS, level Freshman, risk High.
+Student 23: GPA 1.6, attendance 50%, study hours 8, failed subjects 5, academic score 50, major IS, level Freshman, risk High.
+Student 24: GPA 1.5, attendance 48%, study hours 8, failed subjects 5, academic score 48, major IT, level Freshman, risk High.
+Student 25: GPA 1.4, attendance 45%, study hours 7, failed subjects 6, academic score 45, major CS, level Freshman, risk High.
+Student 26: GPA 1.3, attendance 47%, study hours 7, failed subjects 5, academic score 46, major IS, level Freshman, risk High.
+Student 27: GPA 1.2, attendance 44%, study hours 6, failed subjects 6, academic score 43, major IT, level Freshman, risk High.
+Student 28: GPA 1.1, attendance 42%, study hours 5, failed subjects 6, academic score 40, major CS, level Freshman, risk High.
+
+Student 29: GPA 3.6, attendance 78%, study hours 18, failed subjects 1, academic score 75, major CS, level Senior, risk Medium.
+Student 30: GPA 3.4, attendance 76%, study hours 17, failed subjects 1, academic score 74, major IT, level Senior, risk Medium.
 
 Sphinx University was established in 2019 and is located in New Assiut City. The university began its academic journey in the 2020/2021 academic year. It aims to provide high-quality education while supporting scientific research and community service. The university includes several facilities such as air-conditioned lecture halls, equipped laboratories, computer services, transportation services, and cafeterias.
 
