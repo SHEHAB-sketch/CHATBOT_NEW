@@ -300,18 +300,23 @@ async function checkRequirements() {
 // ================================
 // INIT
 // ================================
-document.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("load", () => {
     checkHealth();
     setInterval(checkHealth, 10000);
 
     const input = document.getElementById("chat-input");
 
-    input.addEventListener("keydown", function (e) {
-        // auto resize (نفس اللي عندك)
-        input.style.height = "auto";
-        input.style.height = Math.min(input.scrollHeight, 120) + "px";
+    if (!input) {
+        console.error("chat-input not found");
+        return;
+    }
 
-        // Enter = send
+    input.addEventListener("keydown", function (e) {
+        // resize
+        this.style.height = "auto";
+        this.style.height = Math.min(this.scrollHeight, 120) + "px";
+
+        // send message
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
