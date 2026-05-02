@@ -1,4 +1,4 @@
-/ ================================
+// ================================
 // CONFIG
 // ================================
 const API_BASE = ""; // Relative path so it works on any domain or tunnel link
@@ -300,26 +300,8 @@ async function checkRequirements() {
 // ================================
 // INIT
 // ================================
-window.addEventListener("load", () => {
+document.addEventListener("DOMContentLoaded", () => {
     checkHealth();
+    // Re-check every 10 seconds
     setInterval(checkHealth, 10000);
-
-    const input = document.getElementById("chat-input");
-
-    if (!input) {
-        console.error("chat-input not found");
-        return;
-    }
-
-    input.addEventListener("keydown", function (e) {
-        // resize
-        this.style.height = "auto";
-        this.style.height = Math.min(this.scrollHeight, 120) + "px";
-
-        // send message
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
 });

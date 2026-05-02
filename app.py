@@ -3,55 +3,18 @@ from flask_cors import CORS
 import google.generativeai as genai
 import os
 import json
-import sqlite3
-import datetime
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
 # --------------------------
-# 🔹 SQLite Database Setup
-# --------------------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "chat_history.db")
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            message_count INTEGER DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# --------------------------
 # 🔹 Gemini Setup (Environment Variables)
 # --------------------------
+# Get API keys from environment variable (comma-separated) or use defaults
 ENV_KEYS = os.environ.get("GEMINI_API_KEYS", "").split(",")
 API_KEYS = [k.strip() for k in ENV_KEYS if k.strip()]
 
+# بنبدل بين الموديلات دي عشان كل واحد ليه ليميت لوحده!
 MODEL_VERSIONS = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
@@ -64,8 +27,9 @@ MODEL_VERSIONS = [
 model_idx = 0
 
 # --------------------------
-# 🔹 Load Knowledge Base
+# 🔹 Load Knowledge Base (Dynamic RAG-style)
 # --------------------------
+# بنجمع ملفات الداتا الأساسية بس عشان الـ AI يتعلم منها
 CHATBOT_CONTEXT = ""
 base_dir = os.path.dirname(__file__)
 target_files = ["chatbot (3).txt", "chatbot.txt", "chatbot (1).txt"]
@@ -120,15 +84,20 @@ You have access to the following university knowledge base and rules.
 7. Respond in the same language the student uses (Arabic or English), and be extremely empathetic and warm."""
 
 # --------------------------
-# 🔹 Gemini Model
+# 🔹 Gemini Setup (Rotating Models & Cache)
 # --------------------------
+model_idx = 0
+
 def get_next_model():
     global model_idx
     k_idx = (model_idx // len(MODEL_VERSIONS)) % len(API_KEYS)
     m_idx = model_idx % len(MODEL_VERSIONS)
+    
     genai.configure(api_key=API_KEYS[k_idx])
     model_name = MODEL_VERSIONS[m_idx]
-    print(f"Rotation: Key[{k_idx}] | Model: {model_name}")
+    
+    print(f"Rotation matching: Key[{k_idx}] | Model: {model_name}")
+    # هنا بنبعت الداتا كلها مرة واحدة في الـ system_instruction
     return genai.GenerativeModel(model_name, system_instruction=SYSTEM_INSTRUCTION)
 
 try:
@@ -144,30 +113,39 @@ except Exception as e:
 
 response_cache = {}
 
+# Logic handled via SYSTEM_INSTRUCTION above
+
 # --------------------------
-# 🔹 Similarity Search
+# 🔹 Chat History (per session - in-memory)
 # --------------------------
+chat_sessions = {}
+
 import difflib
 
+# --------------------------
+# 🔹 Similarity Search (Local Data First)
+# --------------------------
 def find_local_match(user_query):
     if not CHATBOT_CONTEXT:
         return None
-    lines = [line.strip() for line in CHATBOT_CONTEXT.split("\n") if line.strip()]
-    matches = difflib.get_close_matches(user_query, lines, n=1, cutoff=0.6)
+
+    lines = [
+        line.strip()
+        for line in CHATBOT_CONTEXT.split("\n")
+        if line.strip()
+    ]
+
+    matches = difflib.get_close_matches(
+        user_query,
+        lines,
+        n=1,
+        cutoff=0.3
+    )
+
     if matches:
         return "📚 (من اللائحة): " + matches[0]
+
     return None
-
-# --------------------------
-# 🔹 Helper: Generate session title from first message
-# --------------------------
-def generate_title(message):
-    words = message.strip().split()
-    title = " ".join(words[:6])
-    if len(words) > 6:
-        title += "..."
-    return title or "New Chat"
-
 # --------------------------
 # 🔹 /chat Endpoint
 # --------------------------
@@ -185,95 +163,42 @@ def _handle_chat(data):
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
 
-        now = datetime.datetime.utcnow().isoformat()
-
-        # Ensure session exists in DB
-        conn = get_db()
-        cursor = conn.cursor()
-        session = cursor.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,)).fetchone()
-        if not session:
-            title = generate_title(user_message)
-            cursor.execute(
-                "INSERT INTO chat_sessions (id, title, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)",
-                (session_id, title, now, now)
-            )
-            conn.commit()
-
-        # Save user message to DB
-        cursor.execute(
-            "INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-            (session_id, "user", user_message, now)
-        )
-        conn.commit()
-
-        # 1️⃣ Local match
+        # 1️⃣ FIRST: Try Local Data Match
         local_reply = find_local_match(user_message)
         if local_reply:
-            cursor.execute(
-                "INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-                (session_id, "bot", local_reply, now)
-            )
-            cursor.execute(
-                "UPDATE chat_sessions SET updated_at = ?, message_count = message_count + 2 WHERE id = ?",
-                (now, session_id)
-            )
-            conn.commit()
-            conn.close()
             return jsonify({"reply": local_reply, "session_id": session_id, "source": "local"})
 
-        # 2️⃣ Cache
+        # 2️⃣ SECOND: Check Global Cache
         cache_key = user_message.lower()
         if cache_key in response_cache:
-            bot_reply = response_cache[cache_key]
-            cursor.execute(
-                "INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-                (session_id, "bot", bot_reply, now)
-            )
-            cursor.execute(
-                "UPDATE chat_sessions SET updated_at = ?, message_count = message_count + 2 WHERE id = ?",
-                (now, session_id)
-            )
-            conn.commit()
-            conn.close()
-            return jsonify({"reply": bot_reply, "session_id": session_id, "source": "cache"})
+            return jsonify({"reply": response_cache[cache_key], "session_id": session_id, "source": "cache"})
 
-        # 3️⃣ AI — load history from DB
-        db_history = cursor.execute(
-            "SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT 10",
-            (session_id,)
-        ).fetchall()
-        db_history = list(reversed(db_history))[:-1]  # exclude the message we just inserted
-
+        # 3️⃣ THIRD: Resort to AI
+        if session_id not in chat_sessions:
+            chat_sessions[session_id] = []
+        
+        history = chat_sessions[session_id]
+        # تحويل الهيستوري لشكل يفهمه Gemini
         gemini_history = []
-        for row in db_history:
-            role = "model" if row["role"] == "bot" else "user"
-            gemini_history.append({"role": role, "parts": [row["content"]]})
+        for turn in history[-5:]: # آخر 5 رسايل بس عشان السرعة
+            gemini_history.append({"role": "user", "parts": [turn["user"]]})
+            gemini_history.append({"role": "model", "parts": [turn["bot"]]})
 
-        conn.close()
-
-        chat_session = model.start_chat(history=gemini_history)
-        response = chat_session.send_message(user_message)
+        # بنفتح شات سيشن بالهيستوري القديم
+        chat = model.start_chat(history=gemini_history)
+        
+        # بنبعت الرسالة الجديدة
+        # ملاحظة: الداتا كلها موجودة في الـ system_instruction اللي اتعرفت وقت إنشاء الـ model
+        response = chat.send_message(user_message)
         bot_reply = response.text.strip()
-
+        
         if not bot_reply.startswith("🤖") and not bot_reply.startswith("📚") and not bot_reply.startswith("📊"):
-            bot_reply = "🤖 (AI): " + bot_reply
+             bot_reply = "🤖 (AI): " + bot_reply
 
+        # Save to cache and history
         response_cache[cache_key] = bot_reply
-
-        # Save bot reply to DB
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-            (session_id, "bot", bot_reply, now)
-        )
-        cursor.execute(
-            "UPDATE chat_sessions SET updated_at = ?, message_count = message_count + 2 WHERE id = ?",
-            (now, session_id)
-        )
-        conn.commit()
-        conn.close()
-
+        history.append({"user": user_message, "bot": bot_reply})
+        
         return jsonify({"reply": bot_reply, "session_id": session_id, "source": "ai"})
 
     except Exception as e:
@@ -283,83 +208,13 @@ def _handle_chat(data):
             if retries >= len(MODEL_VERSIONS) * len(API_KEYS):
                 friendly_err = "عذراً، ضغط الأسئلة كبير حالياً على جميع المفاتيح. يرجى الانتظار 30 ثانية والمحاولة مرة أخرى ⏱️"
                 return jsonify({"error": friendly_err}), 429
-            model_idx += 1
+            
+            model_idx += 1 
             model = get_next_model()
             data["retries"] = retries + 1
-            return _handle_chat(data)
+            return _handle_chat(data) 
+        
         return jsonify({"error": f"AI Error: {error_msg}"}), 500
-
-
-# --------------------------
-# 🔹 /sessions — Get all chat sessions
-# --------------------------
-@app.route("/sessions", methods=["GET"])
-def get_sessions():
-    conn = get_db()
-    cursor = conn.cursor()
-    sessions = cursor.execute(
-        "SELECT id, title, created_at, updated_at, message_count FROM chat_sessions ORDER BY updated_at DESC"
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(s) for s in sessions])
-
-
-# --------------------------
-# 🔹 /sessions/<id> — Get messages for a session
-# --------------------------
-@app.route("/sessions/<session_id>", methods=["GET"])
-def get_session_messages(session_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    session = cursor.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,)).fetchone()
-    if not session:
-        conn.close()
-        return jsonify({"error": "Session not found"}), 404
-    messages = cursor.execute(
-        "SELECT role, content, timestamp FROM chat_messages WHERE session_id = ? ORDER BY id ASC",
-        (session_id,)
-    ).fetchall()
-    conn.close()
-    return jsonify({
-        "session": dict(session),
-        "messages": [dict(m) for m in messages]
-    })
-
-
-# --------------------------
-# 🔹 /sessions/<id> DELETE — Delete a session
-# --------------------------
-@app.route("/sessions/<session_id>", methods=["DELETE"])
-def delete_session(session_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
-    cursor.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
-
-
-# --------------------------
-# 🔹 /sessions/search — Search sessions by keyword
-# --------------------------
-@app.route("/sessions/search", methods=["GET"])
-def search_sessions():
-    query = request.args.get("q", "").strip()
-    if not query:
-        return jsonify([])
-    conn = get_db()
-    cursor = conn.cursor()
-    results = cursor.execute(
-        """SELECT DISTINCT cs.id, cs.title, cs.created_at, cs.updated_at, cs.message_count
-           FROM chat_sessions cs
-           JOIN chat_messages cm ON cs.id = cm.session_id
-           WHERE cs.title LIKE ? OR cm.content LIKE ?
-           ORDER BY cs.updated_at DESC""",
-        (f"%{query}%", f"%{query}%")
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in results])
 
 
 # --------------------------
@@ -397,6 +252,7 @@ Be structured, clear, and supportive. Use emojis. Respond in both Arabic and Eng
         response = model.generate_content(prompt)
         result = response.text.strip()
 
+        # Simple pass/fail logic for frontend badge
         can_graduate = (
             int(credit_hours) >= 138 and
             float(gpa) >= 2.0 and
@@ -418,7 +274,8 @@ Be structured, clear, and supportive. Use emojis. Respond in both Arabic and Eng
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "Quota" in error_msg:
-            return jsonify({"error": "عذراً، يرجى الانتظار دقيقة والمحاولة."}), 429
+            friendly_err = "عذراً، لقد استنفدت الحد المسموح للذكاء الاصطناعي حالياً. يرجى الانتظار دقيقة والمحاولة."
+            return jsonify({"error": friendly_err}), 429
         return jsonify({"error": f"AI Error: {error_msg}"}), 500
 
 
@@ -430,6 +287,10 @@ def index():
 def serve_static(path):
     return send_from_directory("static", path)
 
+
+# --------------------------
+# 🔹 /health Endpoint
+# --------------------------
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "model": "gemini-2.0-flash"})
