@@ -1,4 +1,4 @@
-/ ================================
+// ================================
 // CONFIG
 // ================================
 const API_BASE = ""; // Relative path so it works on any domain or tunnel link
