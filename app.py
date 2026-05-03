@@ -1,77 +1,111 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template, session
+from flask import Flask, request, jsonify, send_from_directory, render_template
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 import os
-import json
+import jwt
+import datetime
+import difflib
 from datetime import timedelta
+from functools import wraps
 
+# --------------------------
+# 🔹 App Setup
+# --------------------------
 app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = 'sphinx_university_super_secret_key'
+app.secret_key = os.environ.get('SECRET_KEY', 'sphinx_university_super_secret_key_2024')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, origins="*")
 
 db = SQLAlchemy(app)
 
+# --------------------------
+# 🔹 Database Models
+# --------------------------
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    chats = db.relationship('Chat', backref='user', lazy=True)
+    chats         = db.relationship('Chat', backref='user', lazy=True)
 
 class Chat(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user_message = db.Column(db.Text, nullable=False)
-    bot_reply = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+    bot_reply    = db.Column(db.Text, nullable=False)
+    timestamp    = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # --------------------------
-# 🔹 Gemini Setup (Environment Variables)
+# 🔹 JWT Helpers
 # --------------------------
-# Get API keys from environment variable (comma-separated) or use defaults
+def generate_token(user_id, username):
+    payload = {
+        'user_id':  user_id,
+        'username': username,
+        'exp':      datetime.datetime.utcnow() + timedelta(days=7)
+    }
+    return jwt.encode(payload, app.secret_key, algorithm='HS256')
+
+def get_current_user():
+    token = None
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+    if not token:
+        data  = request.get_json(silent=True) or {}
+        token = data.get('token', '')
+    if not token:
+        return None
+    try:
+        return jwt.decode(token, app.secret_key, algorithms=['HS256'])
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify({"error": "يجب تسجيل الدخول أولاً"}), 401
+        return f(user, *args, **kwargs)
+    return decorated
+
+# --------------------------
+# 🔹 Gemini Setup
+# --------------------------
 ENV_KEYS = os.environ.get("GEMINI_API_KEYS", "").split(",")
 API_KEYS = [k.strip() for k in ENV_KEYS if k.strip()]
 
-# بنبدل بين الموديلات دي عشان كل واحد ليه ليميت لوحده!
 MODEL_VERSIONS = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-2.5-flash",
     "gemini-2.5-pro",
-    "gemini-flash-latest",
-    "gemini-pro-latest",
 ]
 
 model_idx = 0
 
 # --------------------------
-# 🔹 Load Knowledge Base (Dynamic RAG-style)
+# 🔹 Knowledge Base
 # --------------------------
-# بنجمع ملفات الداتا الأساسية بس عشان الـ AI يتعلم منها
 CHATBOT_CONTEXT = ""
-base_dir = os.path.dirname(__file__)
+base_dir    = os.path.dirname(os.path.abspath(__file__))
 target_files = ["chatbot (3).txt", "chatbot.txt", "chatbot (1).txt"]
-txt_files = [f for f in os.listdir(base_dir) if f in target_files]
 
-for filename in txt_files:
+for filename in target_files:
     file_path = os.path.join(base_dir, filename)
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-            CHATBOT_CONTEXT += f"\n--- SOURCE: {filename} ---\n{content}\n"
-    except Exception as e:
-        print(f"Warning: Could not read {filename}: {e}")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                CHATBOT_CONTEXT += f"\n--- SOURCE: {filename} ---\n{f.read()}\n"
+        except Exception as e:
+            print(f"Warning: Could not read {filename}: {e}")
 
 if not CHATBOT_CONTEXT.strip():
     CHATBOT_CONTEXT = "University Information: Sphinx University uses a credit hour system."
 
-# --------------------------
-# 🔹 University Rules
-# --------------------------
 UNIVERSITY_RULES = """
 Sphinx University Graduation Requirements:
 - Total credit hours required: 138
@@ -79,16 +113,12 @@ Sphinx University Graduation Requirements:
 - Minimum attendance rate: 75%
 - Maximum study duration: 8 years (16 semesters)
 - Students must pass all core/mandatory courses
-- Students on academic probation must achieve GPA ≥ 2.0 next semester
+- Students on academic probation must achieve GPA >= 2.0 next semester
 - A student fails a course if attendance drops below 75%
 - Failed courses can be retaken (counted toward max duration)
 """
 
-# --------------------------
-# 🔹 System Prompt
-# --------------------------
 SYSTEM_INSTRUCTION = f"""You are a friendly human academic advisor for Sphinx University.
-You have access to the following university knowledge base and rules.
 
 === UNIVERSITY KNOWLEDGE BASE ===
 {CHATBOT_CONTEXT}
@@ -97,107 +127,80 @@ You have access to the following university knowledge base and rules.
 {UNIVERSITY_RULES}
 
 === YOUR BEHAVIOR ===
-1. You must first ALWAYS check if the answer exists in the UNIVERSITY KNOWLEDGE BASE or GRADUATION RULES.
-2. IF the answer depends on the provided university rules or context, you MUST start your reply exactly with "📚 (من اللائحة): " and provide the rule directly in conversational human text.
-3. IF the answer is NOT in the rules/context, you MUST start your reply exactly with "🤖 (AI): " and answer from your general knowledge.
-4. DO NOT use any markdown formatting (no asterisks **, no hash #). DO NOT use bullet points or numbered lists.
-5. DO NOT output any code or JSON. Speak exactly like a normal person chatting on WhatsApp.
-6. If the student shares their academic data (credit hours, GPA, attendance), calculate their eligibility naturally in conversation and prefix with "📊 (تحليل البيانات): ".
-7. Respond in the same language the student uses (Arabic or English), and be extremely empathetic and warm."""
+1. Always check the KNOWLEDGE BASE and RULES first.
+2. If answer is in the rules/context: start reply with "📚 (من اللائحة): "
+3. If NOT in rules/context: start reply with "🤖 (AI): "
+4. No markdown, no asterisks, no bullet points. Talk like WhatsApp.
+5. If student shares academic data (hours/GPA/attendance): analyze and prefix with "📊 (تحليل البيانات): "
+6. Reply in the same language the student uses (Arabic or English). Be warm and empathetic.
+"""
 
 # --------------------------
-# 🔹 Gemini Setup (Rotating Models & Cache)
+# 🔹 Gemini Model Init
 # --------------------------
-model_idx = 0
-
 def get_next_model():
     global model_idx
-    k_idx = (model_idx // len(MODEL_VERSIONS)) % len(API_KEYS)
-    m_idx = model_idx % len(MODEL_VERSIONS)
-    
-    genai.configure(api_key=API_KEYS[k_idx])
+    if not API_KEYS:
+        raise ValueError("No API keys configured. Set GEMINI_API_KEYS environment variable.")
+    k_idx      = (model_idx // len(MODEL_VERSIONS)) % len(API_KEYS)
+    m_idx      = model_idx % len(MODEL_VERSIONS)
     model_name = MODEL_VERSIONS[m_idx]
-    
-    print(f"Rotation matching: Key[{k_idx}] | Model: {model_name}")
-    # هنا بنبعت الداتا كلها مرة واحدة في الـ system_instruction
+    genai.configure(api_key=API_KEYS[k_idx])
+    print(f"Using Key[{k_idx}] | Model: {model_name}")
     return genai.GenerativeModel(model_name, system_instruction=SYSTEM_INSTRUCTION)
 
+class MockModel:
+    """يُستخدم لما مفيش API keys"""
+    def generate_content(self, *args, **kwargs):
+        return type('R', (), {'text': '⚠️ لم يتم تكوين مفاتيح Gemini API. يرجى إضافة GEMINI_API_KEYS.'})()
+    def start_chat(self, **kwargs):
+        return type('C', (), {'send_message': lambda self, msg: type('R', (), {'text': '⚠️ لم يتم تكوين مفاتيح Gemini API.'})()})()
+
 try:
-    model = get_next_model()
+    model = get_next_model() if API_KEYS else MockModel()
 except Exception as e:
-    print(f"Warning: Could not initialize Gemini model: {e}")
-    class MockModel:
-        def generate_content(self, *args, **kwargs):
-            return type('obj', (object,), {'text': 'AI Error: No API keys configured.'})
-        def start_chat(self, *args, **kwargs):
-            return type('obj', (object,), {'send_message': lambda msg: type('obj', (object,), {'text': 'AI Error: No API keys configured.'})})
+    print(f"Warning: Could not initialize Gemini: {e}")
     model = MockModel()
 
 response_cache = {}
+chat_sessions  = {}
 
-# Logic handled via SYSTEM_INSTRUCTION above
-
-# --------------------------
-# 🔹 Chat History (per session - in-memory)
-# --------------------------
-chat_sessions = {}
-
-import difflib
-
-# --------------------------
-# 🔹 Similarity Search (Local Data First)
-# --------------------------
 def find_local_match(user_query):
     if not CHATBOT_CONTEXT:
         return None
+    lines   = [l.strip() for l in CHATBOT_CONTEXT.split("\n") if l.strip()]
+    matches = difflib.get_close_matches(user_query, lines, n=1, cutoff=0.3)
+    return ("📚 (من اللائحة): " + matches[0]) if matches else None
 
-    lines = [
-        line.strip()
-        for line in CHATBOT_CONTEXT.split("\n")
-        if line.strip()
-    ]
-
-    matches = difflib.get_close_matches(
-        user_query,
-        lines,
-        n=1,
-        cutoff=0.3
-    )
-
-    if matches:
-        return "📚 (من اللائحة): " + matches[0]
-
-    return None
 # --------------------------
-# 🔹 /chat Endpoint
+# 🔹 Auth Routes
 # --------------------------
 @app.route("/register", methods=["POST"])
 def register():
-    data = request.get_json() or {}
+    data     = request.get_json() or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
 
     if not username or not password:
         return jsonify({"error": "اسم المستخدم وكلمة المرور مطلوبان"}), 400
+    if len(username) < 3:
+        return jsonify({"error": "اسم المستخدم يجب أن يكون 3 أحرف على الأقل"}), 400
+    if len(password) < 4:
+        return jsonify({"error": "كلمة المرور يجب أن تكون 4 أحرف على الأقل"}), 400
 
-    existing_user = User.query.filter_by(username=username).first()
-    if existing_user:
+    if User.query.filter_by(username=username).first():
         return jsonify({"error": "اسم المستخدم موجود مسبقاً"}), 400
 
-    hashed_password = generate_password_hash(password)
-    new_user = User(username=username, password_hash=hashed_password)
+    new_user = User(username=username, password_hash=generate_password_hash(password))
     db.session.add(new_user)
     db.session.commit()
 
-    session.permanent = True
-    session["user_id"] = new_user.id
-    session["username"] = new_user.username
-
-    return jsonify({"success": True, "message": "تم التسجيل بنجاح", "username": new_user.username})
+    token = generate_token(new_user.id, new_user.username)
+    return jsonify({"success": True, "username": new_user.username, "token": token})
 
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.get_json() or {}
+    data     = request.get_json() or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
 
@@ -206,200 +209,174 @@ def login():
 
     user = User.query.filter_by(username=username).first()
     if user and check_password_hash(user.password_hash, password):
-        session.permanent = True
-        session["user_id"] = user.id
-        session["username"] = user.username
-        return jsonify({"success": True, "message": "تم تسجيل الدخول بنجاح", "username": user.username})
-    else:
-        return jsonify({"error": "اسم المستخدم أو كلمة المرور غير صحيحة"}), 401
+        token = generate_token(user.id, user.username)
+        return jsonify({"success": True, "username": user.username, "token": token})
+
+    return jsonify({"error": "اسم المستخدم أو كلمة المرور غير صحيحة"}), 401
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.pop("user_id", None)
-    session.pop("username", None)
-    return jsonify({"success": True, "message": "تم تسجيل الخروج"})
+    return jsonify({"success": True})
 
-@app.route("/get_chats", methods=["GET"])
-def get_chats():
-    if "user_id" not in session:
-        return jsonify({"error": "غير مصرح لك"}), 401
-    
-    user_id = session["user_id"]
-    chats = Chat.query.filter_by(user_id=user_id).order_by(Chat.timestamp.asc()).all()
-    
-    chat_history = []
-    for chat in chats:
-        chat_history.append({"sender": "user", "text": chat.user_message})
-        chat_history.append({"sender": "bot", "text": chat.bot_reply})
-        
-    return jsonify({"success": True, "chats": chat_history, "username": session["username"]})
-
-@app.route("/check_auth", methods=["GET"])
+@app.route("/check_auth", methods=["GET", "POST"])
 def check_auth():
-    if "user_id" in session:
-        return jsonify({"logged_in": True, "username": session["username"]})
+    user = get_current_user()
+    if user:
+        return jsonify({"logged_in": True, "username": user["username"]})
     return jsonify({"logged_in": False})
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    if "user_id" not in session:
-        return jsonify({"error": "يجب تسجيل الدخول أولاً"}), 401
-    data = request.get_json() or {}
-    return _handle_chat(data)
-
-def _handle_chat(data):
-    global model, model_idx
-    try:
-        user_message = data.get("message", "").strip()
-        session_id = data.get("session_id", "default")
-
-        if not user_message:
-            return jsonify({"error": "No message provided"}), 400
-
-        # 1️⃣ FIRST: Try Local Data Match
-        local_reply = find_local_match(user_message)
-        if local_reply:
-            return jsonify({"reply": local_reply, "session_id": session_id, "source": "local"})
-
-        # 2️⃣ SECOND: Check Global Cache
-        cache_key = user_message.lower()
-        if cache_key in response_cache:
-            return jsonify({"reply": response_cache[cache_key], "session_id": session_id, "source": "cache"})
-
-        # 3️⃣ THIRD: Resort to AI
-        if session_id not in chat_sessions:
-            chat_sessions[session_id] = []
-        
-        history = chat_sessions[session_id]
-        # تحويل الهيستوري لشكل يفهمه Gemini
-        gemini_history = []
-        for turn in history[-5:]: # آخر 5 رسايل بس عشان السرعة
-            gemini_history.append({"role": "user", "parts": [turn["user"]]})
-            gemini_history.append({"role": "model", "parts": [turn["bot"]]})
-
-        # بنفتح شات سيشن بالهيستوري القديم
-        chat = model.start_chat(history=gemini_history)
-        
-        # بنبعت الرسالة الجديدة
-        # ملاحظة: الداتا كلها موجودة في الـ system_instruction اللي اتعرفت وقت إنشاء الـ model
-        response = chat.send_message(user_message)
-        bot_reply = response.text.strip()
-        
-        if not bot_reply.startswith("🤖") and not bot_reply.startswith("📚") and not bot_reply.startswith("📊"):
-             bot_reply = "🤖 (AI): " + bot_reply
-
-        # Save to database
-        user_id = session.get("user_id")
-        if user_id:
-            new_chat = Chat(user_id=user_id, user_message=user_message, bot_reply=bot_reply)
-            db.session.add(new_chat)
-            db.session.commit()
-
-        # Save to cache and history
-        response_cache[cache_key] = bot_reply
-        history.append({"user": user_message, "bot": bot_reply})
-        
-        return jsonify({"reply": bot_reply, "session_id": session_id, "source": "ai"})
-
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "Quota" in error_msg or "404" in error_msg:
-            retries = data.get("retries", 0)
-            if retries >= len(MODEL_VERSIONS) * len(API_KEYS):
-                friendly_err = "عذراً، ضغط الأسئلة كبير حالياً على جميع المفاتيح. يرجى الانتظار 30 ثانية والمحاولة مرة أخرى ⏱️"
-                return jsonify({"error": friendly_err}), 429
-            
-            model_idx += 1 
-            model = get_next_model()
-            data["retries"] = retries + 1
-            return _handle_chat(data) 
-        
-        return jsonify({"error": f"AI Error: {error_msg}"}), 500
-
+@app.route("/get_chats", methods=["GET", "POST"])
+@require_auth
+def get_chats(current_user):
+    chats = Chat.query.filter_by(user_id=current_user["user_id"]).order_by(Chat.timestamp.asc()).all()
+    history = []
+    for c in chats:
+        history.append({"sender": "user", "text": c.user_message})
+        history.append({"sender": "bot",  "text": c.bot_reply})
+    return jsonify({"success": True, "chats": history, "username": current_user["username"]})
 
 # --------------------------
-# 🔹 /check-requirements Endpoint
+# 🔹 Chat Route
+# --------------------------
+@app.route("/chat", methods=["POST"])
+@require_auth
+def chat(current_user):
+    data = request.get_json() or {}
+    return _handle_chat(data, current_user)
+
+def _handle_chat(data, current_user, retries=0):
+    global model, model_idx
+    max_retries = len(MODEL_VERSIONS) * max(len(API_KEYS), 1)
+
+    try:
+        user_message = data.get("message", "").strip()
+        session_id   = data.get("session_id", "default")
+
+        if not user_message:
+            return jsonify({"error": "الرسالة فاضية"}), 400
+
+        # 1️⃣ Local match first
+        local_reply = find_local_match(user_message)
+        if local_reply:
+            return jsonify({"reply": local_reply, "source": "local"})
+
+        # 2️⃣ Cache
+        cache_key = user_message.lower().strip()
+        if cache_key in response_cache:
+            return jsonify({"reply": response_cache[cache_key], "source": "cache"})
+
+        # 3️⃣ AI
+        if not API_KEYS:
+            return jsonify({"error": "لم يتم تكوين مفاتيح Gemini API في السيرفر"}), 500
+
+        if session_id not in chat_sessions:
+            chat_sessions[session_id] = []
+
+        history        = chat_sessions[session_id]
+        gemini_history = []
+        for turn in history[-5:]:
+            gemini_history.append({"role": "user",  "parts": [turn["user"]]})
+            gemini_history.append({"role": "model", "parts": [turn["bot"]]})
+
+        chat_obj = model.start_chat(history=gemini_history)
+        response = chat_obj.send_message(user_message)
+        bot_reply = response.text.strip()
+
+        if not any(bot_reply.startswith(p) for p in ["🤖", "📚", "📊"]):
+            bot_reply = "🤖 (AI): " + bot_reply
+
+        # Save to DB
+        db.session.add(Chat(
+            user_id      = current_user["user_id"],
+            user_message = user_message,
+            bot_reply    = bot_reply
+        ))
+        db.session.commit()
+
+        response_cache[cache_key] = bot_reply
+        history.append({"user": user_message, "bot": bot_reply})
+
+        return jsonify({"reply": bot_reply, "source": "ai"})
+
+    except Exception as e:
+        err = str(e)
+        if any(code in err for code in ["429", "Quota", "404", "503"]):
+            if retries < max_retries:
+                model_idx += 1
+                try:
+                    model = get_next_model()
+                except:
+                    pass
+                return _handle_chat(data, current_user, retries + 1)
+            return jsonify({"error": "ضغط كبير على الـ AI حالياً، انتظر 30 ثانية وحاول تاني ⏱️"}), 429
+        return jsonify({"error": f"خطأ في الـ AI: {err}"}), 500
+
+# --------------------------
+# 🔹 Graduation Checker
 # --------------------------
 @app.route("/check-requirements", methods=["POST"])
 def check_requirements():
     try:
-        data = request.get_json()
-        credit_hours = data.get("credit_hours", 0)
-        gpa = data.get("gpa", 0.0)
-        attendance = data.get("attendance", 0)
-        years = data.get("years", 0)
+        data         = request.get_json() or {}
+        credit_hours = int(data.get("credit_hours", 0))
+        gpa          = float(data.get("gpa", 0.0))
+        attendance   = int(data.get("attendance", 0))
+        years        = int(data.get("years", 0))
         student_name = data.get("name", "Student")
 
         prompt = f"""You are a strict academic advisor at Sphinx University.
 
 {UNIVERSITY_RULES}
 
-A student named {student_name} has submitted their academic record for graduation eligibility check:
-- Completed Credit Hours: {credit_hours} / 138 required
-- Current GPA: {gpa} / 4.0 (minimum required: 2.0)
-- Attendance Rate: {attendance}% (minimum required: 75%)
-- Years of Study: {years} / 8 maximum
+Student: {student_name}
+- Credit Hours: {credit_hours} / 138
+- GPA: {gpa} / 4.0
+- Attendance: {attendance}%
+- Years of Study: {years} / 8
 
-Please provide:
-1. ✅ or ❌ for each requirement (pass/fail)
-2. An overall verdict: CAN GRADUATE or CANNOT GRADUATE YET
-3. If cannot graduate: specific advice on what to improve
-4. If can graduate: congratulations and graduation readiness summary
-5. Estimated semesters remaining (if applicable)
+Give: ✅/❌ for each, overall verdict, advice if not eligible, congrats if eligible. Use emojis. Reply in Arabic and English."""
 
-Be structured, clear, and supportive. Use emojis. Respond in both Arabic and English."""
-
-        response = model.generate_content(prompt)
-        result = response.text.strip()
-
-        # Simple pass/fail logic for frontend badge
-        can_graduate = (
-            int(credit_hours) >= 138 and
-            float(gpa) >= 2.0 and
-            int(attendance) >= 75 and
-            int(years) <= 8
-        )
+        response  = model.generate_content(prompt)
+        can_grad  = (credit_hours >= 138 and gpa >= 2.0 and attendance >= 75 and years <= 8)
 
         return jsonify({
-            "analysis": result,
-            "can_graduate": can_graduate,
+            "analysis":    response.text.strip(),
+            "can_graduate": can_grad,
             "details": {
-                "credit_hours": {"value": credit_hours, "required": 138, "pass": int(credit_hours) >= 138},
-                "gpa": {"value": gpa, "required": 2.0, "pass": float(gpa) >= 2.0},
-                "attendance": {"value": attendance, "required": 75, "pass": int(attendance) >= 75},
-                "years": {"value": years, "required": 8, "pass": int(years) <= 8}
+                "credit_hours": {"value": credit_hours, "required": 138, "pass": credit_hours >= 138},
+                "gpa":          {"value": gpa,          "required": 2.0,  "pass": gpa >= 2.0},
+                "attendance":   {"value": attendance,   "required": 75,   "pass": attendance >= 75},
+                "years":        {"value": years,         "required": 8,    "pass": years <= 8},
             }
         })
 
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "Quota" in error_msg:
-            friendly_err = "عذراً، لقد استنفدت الحد المسموح للذكاء الاصطناعي حالياً. يرجى الانتظار دقيقة والمحاولة."
-            return jsonify({"error": friendly_err}), 429
-        return jsonify({"error": f"AI Error: {error_msg}"}), 500
+        err = str(e)
+        if "429" in err or "Quota" in err:
+            return jsonify({"error": "استنفدت الحد المسموح، انتظر دقيقة وحاول تاني."}), 429
+        return jsonify({"error": f"خطأ: {err}"}), 500
 
-
-@app.route("/", methods=["GET"])
+# --------------------------
+# 🔹 Static & Health
+# --------------------------
+@app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/<path:path>", methods=["GET"])
+@app.route("/<path:path>")
 def serve_static(path):
     return send_from_directory("static", path)
 
-
-# --------------------------
-# 🔹 /health Endpoint
-# --------------------------
-@app.route("/health", methods=["GET"])
+@app.route("/health")
 def health():
-    return jsonify({"status": "ok", "model": "gemini-2.0-flash"})
+    return jsonify({"status": "ok", "api_keys": len(API_KEYS), "model": MODEL_VERSIONS[model_idx % len(MODEL_VERSIONS)]})
 
-
+# --------------------------
+# 🔹 Start
+# --------------------------
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-        
     port = int(os.environ.get("PORT", 5000))
-    print(f"Smart Academic Advisor API running on http://localhost:{port}")
+    print(f"🚀 Running on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
