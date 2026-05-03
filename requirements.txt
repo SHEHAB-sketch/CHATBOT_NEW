@@ -4,4 +4,3 @@ google-generativeai
 gunicorn
 Flask-SQLAlchemy
 Werkzeug
-PyJWT
