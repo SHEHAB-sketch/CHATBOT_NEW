@@ -5,13 +5,25 @@ const API_BASE = ""; // Relative path so it works on any domain or tunnel link
 let SESSION_ID = "session_" + Date.now();
 let isLoginMode = true;
 
+// ================================
+// HELPER: fetch مع credentials دايماً
+// ================================
+async function apiFetch(url, options = {}) {
+    return fetch(API_BASE + url, {
+        ...options,
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+        }
+    });
+}
+
 function newChat() {
     if (!confirm("هل تريد بدء محادثة جديدة؟ سيتم مسح الرسائل الحالية. / Start a new chat? Current messages will be cleared.")) return;
 
-    // Reset Session
     SESSION_ID = "session_" + Date.now();
 
-    // Clear UI
     const container = document.getElementById("chat-messages");
     container.innerHTML = `
         <div class="msg-row bot-row">
@@ -24,7 +36,6 @@ function newChat() {
         </div>
     `;
 
-    // Focus input
     document.getElementById("chat-input").focus();
 }
 
@@ -33,7 +44,7 @@ function newChat() {
 // ================================
 async function checkAuth() {
     try {
-        const res = await fetch(API_BASE + "/check_auth");
+        const res = await apiFetch("/check_auth");
         const data = await res.json();
         if (data.logged_in) {
             document.getElementById("auth-modal").classList.remove("active");
@@ -44,6 +55,7 @@ async function checkAuth() {
         }
     } catch (err) {
         console.error("Auth check failed", err);
+        document.getElementById("auth-modal").classList.add("active");
     }
 }
 
@@ -52,7 +64,7 @@ function toggleAuthMode() {
     document.getElementById("auth-error").textContent = "";
     document.getElementById("auth-username").value = "";
     document.getElementById("auth-password").value = "";
-    
+
     if (isLoginMode) {
         document.getElementById("auth-title").textContent = "تسجيل الدخول";
         document.getElementById("auth-btn-text").textContent = "دخول";
@@ -70,23 +82,33 @@ async function submitAuth() {
     const username = document.getElementById("auth-username").value.trim();
     const password = document.getElementById("auth-password").value.trim();
     const errorEl = document.getElementById("auth-error");
-    
+    const btnText = document.getElementById("auth-btn-text");
+
     if (!username || !password) {
         errorEl.textContent = "الرجاء إدخال اسم المستخدم وكلمة المرور";
         return;
     }
-    
-    errorEl.textContent = "جاري التحميل...";
-    
+
+    errorEl.textContent = "";
+    btnText.textContent = "جاري التحميل...";
+
     const endpoint = isLoginMode ? "/login" : "/register";
+
     try {
-        const res = await fetch(API_BASE + endpoint, {
+        const res = await apiFetch(endpoint, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
         });
+
+        // لو السيرفر مش شغال خالص
+        if (!res.ok && res.status !== 400 && res.status !== 401) {
+            errorEl.textContent = "⚠️ السيرفر مش شغال، تأكد إن app.py شغال على port 5000";
+            btnText.textContent = isLoginMode ? "دخول" : "تسجيل";
+            return;
+        }
+
         const data = await res.json();
-        
+
         if (data.error) {
             errorEl.textContent = data.error;
         } else {
@@ -96,24 +118,32 @@ async function submitAuth() {
             loadChats();
         }
     } catch (err) {
-        errorEl.textContent = "خطأ في الاتصال بالخادم";
+        console.error("Auth error:", err);
+        // رسالة خطأ واضحة حسب نوع المشكلة
+        if (err.name === "TypeError" && err.message.includes("fetch")) {
+            errorEl.textContent = "⚠️ مش قادر يوصل للسيرفر — تأكد إن app.py شغال";
+        } else {
+            errorEl.textContent = "⚠️ حدث خطأ، حاول تاني بعد شوية";
+        }
     }
+
+    btnText.textContent = isLoginMode ? "دخول" : "تسجيل";
 }
 
 async function logout() {
     try {
-        await fetch(API_BASE + "/logout", { method: "POST" });
-        document.getElementById("chat-messages").innerHTML = "";
-        document.getElementById("user-info-display").textContent = "";
-        document.getElementById("auth-modal").classList.add("active");
+        await apiFetch("/logout", { method: "POST" });
     } catch (err) {
         console.error("Logout failed", err);
     }
+    document.getElementById("chat-messages").innerHTML = "";
+    document.getElementById("user-info-display").textContent = "";
+    document.getElementById("auth-modal").classList.add("active");
 }
 
 async function loadChats() {
     try {
-        const res = await fetch(API_BASE + "/get_chats");
+        const res = await apiFetch("/get_chats");
         const data = await res.json();
         if (data.success && data.chats.length > 0) {
             const container = document.getElementById("chat-messages");
@@ -139,21 +169,15 @@ async function loadChats() {
 // NAVIGATION & SIDEBAR
 // ================================
 function switchTab(tab) {
-    // Hide all contents
     document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
-    
-    // Deactivate all nav items (sidebar items)
     document.querySelectorAll(".sidebar-item").forEach(el => el.classList.remove("active"));
-    
-    // Show target content
+
     const targetContent = document.getElementById("tab-" + tab);
     if (targetContent) targetContent.classList.add("active");
-    
-    // Activate target nav item
+
     const targetBtn = document.getElementById("tab-" + tab + "-btn");
     if (targetBtn) targetBtn.classList.add("active");
 
-    // Close sidebar on mobile after clicking
     if (window.innerWidth <= 768) {
         document.getElementById("sidebar").classList.remove("open");
         const overlay = document.getElementById("sidebar-overlay");
@@ -173,7 +197,7 @@ function toggleSidebar() {
 // ================================
 async function checkHealth() {
     try {
-        const res = await fetch(API_BASE + "/health");
+        const res = await apiFetch("/health");
         if (res.ok) {
             const dot = document.querySelector(".status-dot");
             dot.classList.add("online");
@@ -203,8 +227,6 @@ function appendMessage(text, sender) {
 
     const bubble = document.createElement("div");
     bubble.className = "bubble " + (sender === "user" ? "user-bubble" : "bot-bubble");
-
-    // Format markdown-like text
     bubble.innerHTML = formatText(text) + `<p class="msg-time">${getTime()}</p>`;
 
     row.appendChild(avatar);
@@ -214,7 +236,6 @@ function appendMessage(text, sender) {
 }
 
 function formatText(text) {
-    // Convert **bold**, *italic*, newlines, numbered lists, bullets
     return text
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>")
@@ -263,9 +284,8 @@ async function sendMessage() {
     showTyping();
 
     try {
-        const res = await fetch(API_BASE + "/chat", {
+        const res = await apiFetch("/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text, session_id: SESSION_ID })
         });
 
@@ -285,7 +305,7 @@ async function sendMessage() {
         }
     } catch (err) {
         removeTyping();
-        appendMessage("⚠️ Cannot connect to server. Make sure `app.py` is running on port 5000.", "bot");
+        appendMessage("⚠️ مش قادر يتصل بالسيرفر، تأكد إن app.py شغال على port 5000.", "bot");
     }
 
     btn.disabled = false;
@@ -298,12 +318,10 @@ function sendQuick(text) {
 }
 
 function handleKey(e) {
-    // Auto-resize textarea
     const ta = document.getElementById("chat-input");
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
 
-    // Send on Enter (not Shift+Enter)
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
@@ -318,7 +336,6 @@ function updateProgress(type, value, max) {
     const bar = document.getElementById("prog-" + type);
     if (bar) {
         bar.style.width = pct + "%";
-        // Color: green if above threshold, red if below
         let threshold = { hours: (138 / 138), gpa: (2.0 / 4.0), attendance: (75 / 100), years: (1.0) }[type];
         const ratio = parseFloat(value) / max;
         if (type === "years") {
@@ -370,16 +387,9 @@ async function checkRequirements() {
     document.getElementById("result-content").style.display = "none";
 
     try {
-        const res = await fetch(API_BASE + "/check-requirements", {
+        const res = await apiFetch("/check-requirements", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                name: name,
-                credit_hours: hours,
-                gpa: gpa,
-                attendance: att,
-                years: years
-            })
+            body: JSON.stringify({ name, credit_hours: hours, gpa, attendance: att, years })
         });
 
         const data = await res.json();
@@ -400,11 +410,10 @@ async function checkRequirements() {
             resultText.textContent = data.analysis;
             resultContent.style.display = "flex";
         }
-
     } catch (err) {
         document.getElementById("result-placeholder").style.display = "flex";
         document.getElementById("result-placeholder").querySelector("p").textContent =
-            "⚠️ Cannot connect to server. Make sure app.py is running.";
+            "⚠️ مش قادر يتصل بالسيرفر، تأكد إن app.py شغال.";
     }
 
     btn.disabled = false;
@@ -417,6 +426,13 @@ async function checkRequirements() {
 document.addEventListener("DOMContentLoaded", () => {
     checkHealth();
     checkAuth();
-    // Re-check every 10 seconds
     setInterval(checkHealth, 10000);
+});
+
+// إرسال بـ Enter في modal تسجيل الدخول
+document.addEventListener("keydown", (e) => {
+    const modal = document.getElementById("auth-modal");
+    if (modal && modal.classList.contains("active") && e.key === "Enter") {
+        submitAuth();
+    }
 });
