@@ -13,6 +13,34 @@
   <div class="bg-blob blob2"></div>
   <div class="bg-blob blob3"></div>
 
+  <!-- Auth Modal -->
+  <div id="auth-modal" class="modal-overlay">
+    <div class="modal-content card">
+      <h2 id="auth-title">تسجيل الدخول</h2>
+      <p id="auth-subtitle">مرحباً بك في مستشارك الأكاديمي</p>
+      
+      <div class="form-group">
+        <label>اسم المستخدم</label>
+        <input type="text" id="auth-username" placeholder="Username">
+      </div>
+      <div class="form-group">
+        <label>كلمة المرور</label>
+        <input type="password" id="auth-password" placeholder="Password">
+      </div>
+      
+      <div id="auth-error" class="error-msg"></div>
+      
+      <button class="check-btn" onclick="submitAuth()">
+        <span id="auth-btn-text">دخول</span>
+      </button>
+      
+      <p class="auth-switch">
+        <span id="auth-switch-text">ليس لديك حساب؟</span>
+        <a href="#" id="auth-switch-link" onclick="toggleAuthMode()">سجل الآن</a>
+      </p>
+    </div>
+  </div>
+
   <!-- Sidebar Overlay for Mobile -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
@@ -51,6 +79,10 @@
         </div>
       </div>
       <div class="sidebar-footer">
+         <div id="user-info-display" style="margin-bottom: 10px; font-weight: 600; color: var(--primary);"></div>
+         <button class="sidebar-btn" style="background: rgba(255,107,107,0.1); color: #ff6b6b; width: 100%; margin-bottom: 10px;" onclick="logout()">
+            تسجيل الخروج
+         </button>
          <p>© 2026 Sphinx University</p>
       </div>
     </aside>

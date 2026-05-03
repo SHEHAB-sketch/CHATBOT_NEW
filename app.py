@@ -1,11 +1,33 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template
+from flask import Flask, request, jsonify, send_from_directory, render_template, session
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 import os
 import json
+from datetime import timedelta
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-CORS(app)
+app.secret_key = 'sphinx_university_super_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+CORS(app, supports_credentials=True)
+
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    chats = db.relationship('Chat', backref='user', lazy=True)
+
+class Chat(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_message = db.Column(db.Text, nullable=False)
+    bot_reply = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # --------------------------
 # 🔹 Gemini Setup (Environment Variables)
@@ -149,8 +171,79 @@ def find_local_match(user_query):
 # --------------------------
 # 🔹 /chat Endpoint
 # --------------------------
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json() or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+
+    if not username or not password:
+        return jsonify({"error": "اسم المستخدم وكلمة المرور مطلوبان"}), 400
+
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        return jsonify({"error": "اسم المستخدم موجود مسبقاً"}), 400
+
+    hashed_password = generate_password_hash(password)
+    new_user = User(username=username, password_hash=hashed_password)
+    db.session.add(new_user)
+    db.session.commit()
+
+    session.permanent = True
+    session["user_id"] = new_user.id
+    session["username"] = new_user.username
+
+    return jsonify({"success": True, "message": "تم التسجيل بنجاح", "username": new_user.username})
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+
+    if not username or not password:
+        return jsonify({"error": "اسم المستخدم وكلمة المرور مطلوبان"}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if user and check_password_hash(user.password_hash, password):
+        session.permanent = True
+        session["user_id"] = user.id
+        session["username"] = user.username
+        return jsonify({"success": True, "message": "تم تسجيل الدخول بنجاح", "username": user.username})
+    else:
+        return jsonify({"error": "اسم المستخدم أو كلمة المرور غير صحيحة"}), 401
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("user_id", None)
+    session.pop("username", None)
+    return jsonify({"success": True, "message": "تم تسجيل الخروج"})
+
+@app.route("/get_chats", methods=["GET"])
+def get_chats():
+    if "user_id" not in session:
+        return jsonify({"error": "غير مصرح لك"}), 401
+    
+    user_id = session["user_id"]
+    chats = Chat.query.filter_by(user_id=user_id).order_by(Chat.timestamp.asc()).all()
+    
+    chat_history = []
+    for chat in chats:
+        chat_history.append({"sender": "user", "text": chat.user_message})
+        chat_history.append({"sender": "bot", "text": chat.bot_reply})
+        
+    return jsonify({"success": True, "chats": chat_history, "username": session["username"]})
+
+@app.route("/check_auth", methods=["GET"])
+def check_auth():
+    if "user_id" in session:
+        return jsonify({"logged_in": True, "username": session["username"]})
+    return jsonify({"logged_in": False})
+
 @app.route("/chat", methods=["POST"])
 def chat():
+    if "user_id" not in session:
+        return jsonify({"error": "يجب تسجيل الدخول أولاً"}), 401
     data = request.get_json() or {}
     return _handle_chat(data)
 
@@ -194,6 +287,13 @@ def _handle_chat(data):
         
         if not bot_reply.startswith("🤖") and not bot_reply.startswith("📚") and not bot_reply.startswith("📊"):
              bot_reply = "🤖 (AI): " + bot_reply
+
+        # Save to database
+        user_id = session.get("user_id")
+        if user_id:
+            new_chat = Chat(user_id=user_id, user_message=user_message, bot_reply=bot_reply)
+            db.session.add(new_chat)
+            db.session.commit()
 
         # Save to cache and history
         response_cache[cache_key] = bot_reply
@@ -297,6 +397,9 @@ def health():
 
 
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+        
     port = int(os.environ.get("PORT", 5000))
     print(f"Smart Academic Advisor API running on http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)

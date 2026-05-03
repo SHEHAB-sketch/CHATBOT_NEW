@@ -3,6 +3,7 @@
 // ================================
 const API_BASE = ""; // Relative path so it works on any domain or tunnel link
 let SESSION_ID = "session_" + Date.now();
+let isLoginMode = true;
 
 function newChat() {
     if (!confirm("هل تريد بدء محادثة جديدة؟ سيتم مسح الرسائل الحالية. / Start a new chat? Current messages will be cleared.")) return;
@@ -25,6 +26,113 @@ function newChat() {
 
     // Focus input
     document.getElementById("chat-input").focus();
+}
+
+// ================================
+// AUTHENTICATION LOGIC
+// ================================
+async function checkAuth() {
+    try {
+        const res = await fetch(API_BASE + "/check_auth");
+        const data = await res.json();
+        if (data.logged_in) {
+            document.getElementById("auth-modal").classList.remove("active");
+            document.getElementById("user-info-display").textContent = "مرحباً، " + data.username;
+            loadChats();
+        } else {
+            document.getElementById("auth-modal").classList.add("active");
+        }
+    } catch (err) {
+        console.error("Auth check failed", err);
+    }
+}
+
+function toggleAuthMode() {
+    isLoginMode = !isLoginMode;
+    document.getElementById("auth-error").textContent = "";
+    document.getElementById("auth-username").value = "";
+    document.getElementById("auth-password").value = "";
+    
+    if (isLoginMode) {
+        document.getElementById("auth-title").textContent = "تسجيل الدخول";
+        document.getElementById("auth-btn-text").textContent = "دخول";
+        document.getElementById("auth-switch-text").textContent = "ليس لديك حساب؟";
+        document.getElementById("auth-switch-link").textContent = "سجل الآن";
+    } else {
+        document.getElementById("auth-title").textContent = "إنشاء حساب";
+        document.getElementById("auth-btn-text").textContent = "تسجيل";
+        document.getElementById("auth-switch-text").textContent = "لديك حساب بالفعل؟";
+        document.getElementById("auth-switch-link").textContent = "سجل الدخول";
+    }
+}
+
+async function submitAuth() {
+    const username = document.getElementById("auth-username").value.trim();
+    const password = document.getElementById("auth-password").value.trim();
+    const errorEl = document.getElementById("auth-error");
+    
+    if (!username || !password) {
+        errorEl.textContent = "الرجاء إدخال اسم المستخدم وكلمة المرور";
+        return;
+    }
+    
+    errorEl.textContent = "جاري التحميل...";
+    
+    const endpoint = isLoginMode ? "/login" : "/register";
+    try {
+        const res = await fetch(API_BASE + endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+            errorEl.textContent = data.error;
+        } else {
+            errorEl.textContent = "";
+            document.getElementById("auth-modal").classList.remove("active");
+            document.getElementById("user-info-display").textContent = "مرحباً، " + data.username;
+            loadChats();
+        }
+    } catch (err) {
+        errorEl.textContent = "خطأ في الاتصال بالخادم";
+    }
+}
+
+async function logout() {
+    try {
+        await fetch(API_BASE + "/logout", { method: "POST" });
+        document.getElementById("chat-messages").innerHTML = "";
+        document.getElementById("user-info-display").textContent = "";
+        document.getElementById("auth-modal").classList.add("active");
+    } catch (err) {
+        console.error("Logout failed", err);
+    }
+}
+
+async function loadChats() {
+    try {
+        const res = await fetch(API_BASE + "/get_chats");
+        const data = await res.json();
+        if (data.success && data.chats.length > 0) {
+            const container = document.getElementById("chat-messages");
+            container.innerHTML = `
+                <div class="msg-row bot-row">
+                    <div class="avatar bot-avatar">🤖</div>
+                    <div class="bubble bot-bubble">
+                      <p>مرحباً بعودتك! أنا مستشارك الأكاديمي الذكي 👋</p>
+                      <p class="msg-time">Now</p>
+                    </div>
+                </div>
+            `;
+            data.chats.forEach(chat => {
+                appendMessage(chat.text, chat.sender);
+            });
+        }
+    } catch (err) {
+        console.error("Failed to load chats", err);
+    }
 }
 
 // ================================
@@ -160,6 +268,12 @@ async function sendMessage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text, session_id: SESSION_ID })
         });
+
+        if (res.status === 401) {
+            removeTyping();
+            document.getElementById("auth-modal").classList.add("active");
+            return;
+        }
 
         const data = await res.json();
         removeTyping();
@@ -302,6 +416,7 @@ async function checkRequirements() {
 // ================================
 document.addEventListener("DOMContentLoaded", () => {
     checkHealth();
+    checkAuth();
     // Re-check every 10 seconds
     setInterval(checkHealth, 10000);
 });
