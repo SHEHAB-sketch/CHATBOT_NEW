@@ -154,6 +154,12 @@ header {
 .sidebar-item:hover { background: var(--surface-hover); color: var(--text); }
 .sidebar-item.active { background: var(--surface-hover); color: var(--accent2); font-weight: 600; }
 
+.history-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-footer { padding: 15px 20px; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-muted); }
 
 /* MAIN CONTENT */

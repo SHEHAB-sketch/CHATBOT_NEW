@@ -23,6 +23,9 @@ function newChat() {
             </div>
         </div>
     `;
+    
+    // Reload sidebar to reset active classes if necessary, or just clear active states
+    loadChats();
 
     // Focus input
     document.getElementById("chat-input").focus();
@@ -100,11 +103,15 @@ async function submitAuth() {
     }
 }
 
+let allSessions = [];
+
 async function logout() {
     try {
         await fetch(API_BASE + "/logout", { method: "POST" });
         document.getElementById("chat-messages").innerHTML = "";
         document.getElementById("user-info-display").textContent = "";
+        document.getElementById("history-section").style.display = "none";
+        document.getElementById("history-list").innerHTML = "";
         document.getElementById("auth-modal").classList.add("active");
     } catch (err) {
         console.error("Logout failed", err);
@@ -115,24 +122,55 @@ async function loadChats() {
     try {
         const res = await fetch(API_BASE + "/get_chats");
         const data = await res.json();
-        if (data.success && data.chats.length > 0) {
-            const container = document.getElementById("chat-messages");
-            container.innerHTML = `
-                <div class="msg-row bot-row">
-                    <div class="avatar bot-avatar">🤖</div>
-                    <div class="bubble bot-bubble">
-                      <p>مرحباً بعودتك! أنا مستشارك الأكاديمي الذكي 👋</p>
-                      <p class="msg-time">Now</p>
-                    </div>
-                </div>
-            `;
-            data.chats.forEach(chat => {
-                appendMessage(chat.text, chat.sender);
+        if (data.success && data.sessions && data.sessions.length > 0) {
+            allSessions = data.sessions;
+            
+            const historySection = document.getElementById("history-section");
+            const historyList = document.getElementById("history-list");
+            if(historySection) historySection.style.display = "block";
+            if(historyList) historyList.innerHTML = "";
+            
+            data.sessions.forEach(session => {
+                const btn = document.createElement("button");
+                btn.className = "sidebar-item history-item";
+                btn.textContent = "💬 " + session.title;
+                btn.onclick = () => loadSession(session.session_id);
+                if(historyList) historyList.appendChild(btn);
             });
+            
+            // Auto-load the most recent session
+            loadSession(data.sessions[0].session_id);
+        } else {
+            const historySection = document.getElementById("history-section");
+            if(historySection) historySection.style.display = "none";
         }
     } catch (err) {
         console.error("Failed to load chats", err);
     }
+}
+
+function loadSession(sessionId) {
+    const session = allSessions.find(s => s.session_id === sessionId);
+    if (!session) return;
+    
+    SESSION_ID = sessionId;
+    
+    const container = document.getElementById("chat-messages");
+    container.innerHTML = `
+        <div class="msg-row bot-row">
+            <div class="avatar bot-avatar">🤖</div>
+            <div class="bubble bot-bubble">
+              <p>مرحباً بعودتك! أنا مستشارك الأكاديمي الذكي 👋</p>
+              <p class="msg-time">Now</p>
+            </div>
+        </div>
+    `;
+    
+    session.messages.forEach(msg => {
+        appendMessage(msg.text, msg.sender);
+    });
+    
+    switchTab('chat');
 }
 
 // ================================

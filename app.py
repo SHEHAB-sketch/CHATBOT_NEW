@@ -31,6 +31,7 @@ class User(db.Model):
 class Chat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    session_id = db.Column(db.String(100), default="default", nullable=False)
     user_message = db.Column(db.Text, nullable=False)
     bot_reply = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
@@ -188,7 +189,6 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
-    session.permanent = True
     session["user_id"] = new_user.id
     session["username"] = new_user.username
 
@@ -205,7 +205,6 @@ def login():
 
     user = User.query.filter_by(username=username).first()
     if user and check_password_hash(user.password_hash, password):
-        session.permanent = True
         session["user_id"] = user.id
         session["username"] = user.username
         return jsonify({"success": True, "message": "تم تسجيل الدخول بنجاح", "username": user.username})
@@ -226,12 +225,23 @@ def get_chats():
     user_id = session["user_id"]
     chats = Chat.query.filter_by(user_id=user_id).order_by(Chat.timestamp.asc()).all()
     
-    chat_history = []
+    sessions_dict = {}
     for chat in chats:
-        chat_history.append({"sender": "user", "text": chat.user_message})
-        chat_history.append({"sender": "bot", "text": chat.bot_reply})
+        s_id = chat.session_id
+        if s_id not in sessions_dict:
+            title = chat.user_message[:30] + "..." if len(chat.user_message) > 30 else chat.user_message
+            sessions_dict[s_id] = {
+                "session_id": s_id,
+                "title": title,
+                "messages": []
+            }
+        sessions_dict[s_id]["messages"].append({"sender": "user", "text": chat.user_message})
+        sessions_dict[s_id]["messages"].append({"sender": "bot", "text": chat.bot_reply})
         
-    return jsonify({"success": True, "chats": chat_history, "username": session["username"]})
+    sessions_list = list(sessions_dict.values())
+    sessions_list.reverse()
+        
+    return jsonify({"success": True, "sessions": sessions_list, "username": session["username"]})
 
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
@@ -285,7 +295,7 @@ def _handle_chat(data):
         # Save to database
         user_id = session.get("user_id")
         if user_id:
-            new_chat = Chat(user_id=user_id, user_message=user_message, bot_reply=bot_reply)
+            new_chat = Chat(user_id=user_id, session_id=session_id, user_message=user_message, bot_reply=bot_reply)
             db.session.add(new_chat)
             db.session.commit()
 

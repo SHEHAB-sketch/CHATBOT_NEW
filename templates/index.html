@@ -77,6 +77,13 @@
           <button class="sidebar-item active" id="tab-chat-btn" onclick="switchTab('chat')">💬 AI Chat Advisor</button>
           <button class="sidebar-item" id="tab-requirements-btn" onclick="switchTab('requirements')">📋 Graduation Checker</button>
         </div>
+        
+        <div class="sidebar-section" id="history-section" style="display: none;">
+          <p class="section-title">Recent Chats</p>
+          <div id="history-list">
+             <!-- History items will be injected here -->
+          </div>
+        </div>
       </div>
       <div class="sidebar-footer">
          <div id="user-info-display" style="margin-bottom: 10px; font-weight: 600; color: var(--primary);"></div>
