@@ -8,10 +8,10 @@ let isLoginMode = true;
 function newChat() {
     if (!confirm("هل تريد بدء محادثة جديدة؟ سيتم مسح الرسائل الحالية. / Start a new chat? Current messages will be cleared.")) return;
 
-    // Reset Session to a new unique ID
+    // Reset Session
     SESSION_ID = "session_" + Date.now();
 
-    // Clear UI and show fresh welcome message
+    // Clear UI
     const container = document.getElementById("chat-messages");
     container.innerHTML = `
         <div class="msg-row bot-row">
@@ -24,8 +24,8 @@ function newChat() {
         </div>
     `;
     
-    // Refresh sidebar WITHOUT auto-loading any session
-    loadChats(true);
+    // Reload sidebar to reset active classes if necessary, or just clear active states
+    loadChats();
 
     // Focus input
     document.getElementById("chat-input").focus();
@@ -118,7 +118,7 @@ async function logout() {
     }
 }
 
-async function loadChats(skipAutoLoad = false) {
+async function loadChats() {
     try {
         const res = await fetch(API_BASE + "/get_chats");
         const data = await res.json();
@@ -138,10 +138,8 @@ async function loadChats(skipAutoLoad = false) {
                 if(historyList) historyList.appendChild(btn);
             });
             
-            // Auto-load the most recent session only if not skipped
-            if (!skipAutoLoad) {
-                loadSession(data.sessions[0].session_id);
-            }
+            // Auto-load the most recent session
+            loadSession(data.sessions[0].session_id);
         } else {
             const historySection = document.getElementById("history-section");
             if(historySection) historySection.style.display = "none";

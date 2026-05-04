@@ -37,10 +37,6 @@ class Chat(db.Model):
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # --------------------------
-# 🔹 Knowledge Base Models
-# --------------------------
-
-# --------------------------
 # 🔹 Gemini Setup (Environment Variables)
 # --------------------------
 # Get API keys from environment variable (comma-separated) or use defaults
@@ -395,3 +391,19 @@ def index():
 def serve_static(path):
     return send_from_directory("static", path)
 
+
+# --------------------------
+# 🔹 /health Endpoint
+# --------------------------
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "model": "gemini-2.0-flash"})
+
+
+with app.app_context():
+    db.create_all()
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Smart Academic Advisor API running on http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)
