@@ -1,5 +1,4 @@
 ---
-اThis project was carried out by Engineer Shehab Mahmoud Elsayed and his colleagues.
 
 Sphinx University was established in 2019 and is located in New Assiut City. The university began its academic journey in the 2020/2021 academic year. It aims to provide high-quality education while supporting scientific research and community service. The university includes several facilities such as air-conditioned lecture halls, equipped laboratories, computer services, transportation services, and cafeterias.
 
