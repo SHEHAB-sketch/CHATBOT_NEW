@@ -260,71 +260,57 @@ def chat():
     data = request.get_json() or {}
     return _handle_chat(data)
 
-def _handle_chat(data):
-    global model, model_idx
-    try:
-        user_message = data.get("message", "").strip()
-        session_id = data.get("session_id", "default")
+async function sendMessage() {
+    const input = document.getElementById("chat-input");
+    const btn = document.getElementById("send-btn");
+    const text = input.value.trim();
 
-        if not user_message:
-            return jsonify({"error": "No message provided"}), 400
+    if (!text) return;
 
-        # 1️⃣ FIRST: Try Local Data Match
-        local_reply = find_local_match(user_message)
-        if local_reply:
-            return jsonify({"reply": local_reply, "session_id": session_id, "source": "local"})
+    appendMessage(text, "user");
+    input.value = "";
+    input.style.height = "auto";
+    btn.disabled = true;
+    showTyping();
 
-        # 2️⃣ SECOND: Check Global Cache
-        cache_key = user_message.lower()
-        if cache_key in response_cache:
-            return jsonify({"reply": response_cache[cache_key], "session_id": session_id, "source": "cache"})
+    try {
+        // إرسال الطلب إلى مسار الـ chat في الباك إند
+        const res = await fetch(API_BASE + "/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text, session_id: SESSION_ID })
+        });
 
-        # 3️⃣ THIRD: Resort to AI
-        if session_id not in chat_sessions:
-            chat_sessions[session_id] = []
-        
-        history = chat_sessions[session_id]
-        gemini_history = []
-        for turn in history[-5:]:
-            gemini_history.append({"role": "user", "parts": [turn["user"]]})
-            gemini_history.append({"role": "model", "parts": [turn["bot"]]})
+        if (res.status === 401) {
+            removeTyping();
+            document.getElementById("auth-modal").classList.add("active");
+            return;
+        }
 
-        chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(user_message)
-        bot_reply = response.text.strip()
-        
-        if not bot_reply.startswith("🤖") and not bot_reply.startswith("📚") and not bot_reply.startswith("📊"):
-             bot_reply = "🤖 (AI): " + bot_reply
+        // استقبال الرد اللي راجع من _handle_chat
+        const data = await res.json();
+        removeTyping();
 
-        # Save to database
-        user_id = session.get("user_id")
-        if user_id:
-            new_chat = Chat(user_id=user_id, session_id=session_id, user_message=user_message, bot_reply=bot_reply)
-            db.session.add(new_chat)
-            db.session.commit()
-
-        # Save to cache and history
-        response_cache[cache_key] = bot_reply
-        history.append({"user": user_message, "bot": bot_reply})
-        
-        return jsonify({"reply": bot_reply, "session_id": session_id, "source": "ai"})
-
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "Quota" in error_msg or "404" in error_msg:
-            retries = data.get("retries", 0)
-            if retries >= len(MODEL_VERSIONS) * len(API_KEYS):
-                friendly_err = "عذراً، ضغط الأسئلة كبير حالياً على جميع المفاتيح. يرجى الانتظار 30 ثانية والمحاولة مرة أخرى ⏱️"
-                return jsonify({"error": friendly_err}), 429
+        if (data.error) {
+            // في حالة وجود خطأ (مثل 429 أو 500)
+            appendMessage("⚠️ Error: " + data.error, "bot");
+        } else {
+            // عرض الـ reply اللي راجع من الباك إند
+            appendMessage(data.reply, "bot");
             
-            model_idx += 1 
-            model = get_next_model()
-            data["retries"] = retries + 1
-            return _handle_chat(data) 
-        
-        return jsonify({"error": f"AI Error: {error_msg}"}), 500
+            // تحديث القائمة الجانبية إذا كانت هذه الجلسة جديدة
+            if (!allSessions.some(s => s.session_id === SESSION_ID)) {
+                loadChats(true);
+            }
+        }
+    } catch (err) {
+        removeTyping();
+        appendMessage("⚠️ Cannot connect to server. Make sure `app.py` is running on port 5000.", "bot");
+    }
 
-
+    btn.disabled = false;
+    input.focus();
+}
 # --------------------------
 # 🔹 /check-requirements Endpoint
 # --------------------------
