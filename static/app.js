@@ -1,17 +1,13 @@
 // ================================
 // CONFIG
 // ================================
-const API_BASE = ""; // Relative path so it works on any domain or tunnel link
+const API_BASE = "";
 let SESSION_ID = "session_" + Date.now();
 let isLoginMode = true;
 
 function newChat() {
     if (!confirm("هل تريد بدء محادثة جديدة؟ سيتم مسح الرسائل الحالية. / Start a new chat? Current messages will be cleared.")) return;
-
-    // Reset Session to a new unique ID
     SESSION_ID = "session_" + Date.now();
-
-    // Clear UI and show fresh welcome message
     const container = document.getElementById("chat-messages");
     container.innerHTML = `
         <div class="msg-row bot-row">
@@ -23,11 +19,7 @@ function newChat() {
             </div>
         </div>
     `;
-    
-    // Refresh sidebar WITHOUT auto-loading any session
     loadChats(true);
-
-    // Focus input
     document.getElementById("chat-input").focus();
 }
 
@@ -39,6 +31,11 @@ async function checkAuth() {
         const res = await fetch(API_BASE + "/check_auth");
         const data = await res.json();
         if (data.logged_in) {
+            // ✅ التعديل الأول
+            if (data.is_admin) {
+                window.location.href = "/admin";
+                return;
+            }
             document.getElementById("auth-modal").classList.remove("active");
             document.getElementById("user-info-display").textContent = "مرحباً، " + data.username;
             loadChats();
@@ -55,7 +52,6 @@ function toggleAuthMode() {
     document.getElementById("auth-error").textContent = "";
     document.getElementById("auth-username").value = "";
     document.getElementById("auth-password").value = "";
-    
     if (isLoginMode) {
         document.getElementById("auth-title").textContent = "تسجيل الدخول";
         document.getElementById("auth-btn-text").textContent = "دخول";
@@ -73,14 +69,11 @@ async function submitAuth() {
     const username = document.getElementById("auth-username").value.trim();
     const password = document.getElementById("auth-password").value.trim();
     const errorEl = document.getElementById("auth-error");
-    
     if (!username || !password) {
         errorEl.textContent = "الرجاء إدخال اسم المستخدم وكلمة المرور";
         return;
     }
-    
     errorEl.textContent = "جاري التحميل...";
-    
     const endpoint = isLoginMode ? "/login" : "/register";
     try {
         const res = await fetch(API_BASE + endpoint, {
@@ -89,11 +82,15 @@ async function submitAuth() {
             body: JSON.stringify({ username, password })
         });
         const data = await res.json();
-        
         if (data.error) {
             errorEl.textContent = data.error;
         } else {
             errorEl.textContent = "";
+            // ✅ التعديل الثاني
+            if (data.is_admin) {
+                window.location.href = "/admin";
+                return;
+            }
             document.getElementById("auth-modal").classList.remove("active");
             document.getElementById("user-info-display").textContent = "مرحباً، " + data.username;
             loadChats();
@@ -124,12 +121,10 @@ async function loadChats(skipAutoLoad = false) {
         const data = await res.json();
         if (data.success && data.sessions && data.sessions.length > 0) {
             allSessions = data.sessions;
-            
             const historySection = document.getElementById("history-section");
             const historyList = document.getElementById("history-list");
             if(historySection) historySection.style.display = "block";
             if(historyList) historyList.innerHTML = "";
-            
             data.sessions.forEach(session => {
                 const btn = document.createElement("button");
                 btn.className = "sidebar-item history-item";
@@ -137,8 +132,6 @@ async function loadChats(skipAutoLoad = false) {
                 btn.onclick = () => loadSession(session.session_id);
                 if(historyList) historyList.appendChild(btn);
             });
-            
-            // Auto-load the most recent session only if not skipped
             if (!skipAutoLoad) {
                 loadSession(data.sessions[0].session_id);
             }
@@ -154,9 +147,7 @@ async function loadChats(skipAutoLoad = false) {
 function loadSession(sessionId) {
     const session = allSessions.find(s => s.session_id === sessionId);
     if (!session) return;
-    
     SESSION_ID = sessionId;
-    
     const container = document.getElementById("chat-messages");
     container.innerHTML = `
         <div class="msg-row bot-row">
@@ -167,11 +158,9 @@ function loadSession(sessionId) {
             </div>
         </div>
     `;
-    
     session.messages.forEach(msg => {
         appendMessage(msg.text, msg.sender);
     });
-    
     switchTab('chat');
 }
 
@@ -179,21 +168,12 @@ function loadSession(sessionId) {
 // NAVIGATION & SIDEBAR
 // ================================
 function switchTab(tab) {
-    // Hide all contents
     document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
-    
-    // Deactivate all nav items (sidebar items)
     document.querySelectorAll(".sidebar-item").forEach(el => el.classList.remove("active"));
-    
-    // Show target content
     const targetContent = document.getElementById("tab-" + tab);
     if (targetContent) targetContent.classList.add("active");
-    
-    // Activate target nav item
     const targetBtn = document.getElementById("tab-" + tab + "-btn");
     if (targetBtn) targetBtn.classList.add("active");
-
-    // Close sidebar on mobile after clicking
     if (window.innerWidth <= 768) {
         document.getElementById("sidebar").classList.remove("open");
         const overlay = document.getElementById("sidebar-overlay");
@@ -233,20 +213,14 @@ function getTime() {
 
 function appendMessage(text, sender) {
     const container = document.getElementById("chat-messages");
-
     const row = document.createElement("div");
     row.className = "msg-row " + (sender === "user" ? "user-row" : "bot-row");
-
     const avatar = document.createElement("div");
     avatar.className = "avatar " + (sender === "user" ? "user-avatar" : "bot-avatar");
     avatar.textContent = sender === "user" ? "🧑" : "🤖";
-
     const bubble = document.createElement("div");
     bubble.className = "bubble " + (sender === "user" ? "user-bubble" : "bot-bubble");
-
-    // Format markdown-like text
     bubble.innerHTML = formatText(text) + `<p class="msg-time">${getTime()}</p>`;
-
     row.appendChild(avatar);
     row.appendChild(bubble);
     container.appendChild(row);
@@ -254,7 +228,6 @@ function appendMessage(text, sender) {
 }
 
 function formatText(text) {
-    // Convert **bold**, *italic*, newlines, numbered lists, bullets
     return text
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>")
@@ -269,15 +242,12 @@ function showTyping() {
     const row = document.createElement("div");
     row.className = "msg-row bot-row";
     row.id = "typing-row";
-
     const avatar = document.createElement("div");
     avatar.className = "avatar bot-avatar";
     avatar.textContent = "🤖";
-
     const indicator = document.createElement("div");
     indicator.className = "typing-indicator";
     indicator.innerHTML = "<span></span><span></span><span></span>";
-
     row.appendChild(avatar);
     row.appendChild(indicator);
     container.appendChild(row);
@@ -293,41 +263,29 @@ async function sendMessage() {
     const input = document.getElementById("chat-input");
     const btn = document.getElementById("send-btn");
     const text = input.value.trim();
-
     if (!text) return;
-
     appendMessage(text, "user");
     input.value = "";
     input.style.height = "auto";
     btn.disabled = true;
     showTyping();
-
     try {
-        // إرسال الطلب إلى مسار الـ chat في الباك إند
         const res = await fetch(API_BASE + "/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text, session_id: SESSION_ID })
         });
-
         if (res.status === 401) {
             removeTyping();
             document.getElementById("auth-modal").classList.add("active");
             return;
         }
-
-        // استقبال الرد اللي راجع من _handle_chat
         const data = await res.json();
         removeTyping();
-
         if (data.error) {
-            // في حالة وجود خطأ (مثل 429 أو 500)
             appendMessage("⚠️ Error: " + data.error, "bot");
         } else {
-            // عرض الـ reply اللي راجع من الباك إند
             appendMessage(data.reply, "bot");
-            
-            // تحديث القائمة الجانبية إذا كانت هذه الجلسة جديدة
             if (!allSessions.some(s => s.session_id === SESSION_ID)) {
                 loadChats(true);
             }
@@ -336,17 +294,14 @@ async function sendMessage() {
         removeTyping();
         appendMessage("⚠️ Cannot connect to server. Make sure `app.py` is running on port 5000.", "bot");
     }
-
     btn.disabled = false;
     input.focus();
 }
+
 function handleKey(e) {
-    // Auto-resize textarea
     const ta = document.getElementById("chat-input");
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
-
-    // Send on Enter (not Shift+Enter)
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
@@ -361,7 +316,6 @@ function updateProgress(type, value, max) {
     const bar = document.getElementById("prog-" + type);
     if (bar) {
         bar.style.width = pct + "%";
-        // Color: green if above threshold, red if below
         let threshold = { hours: (138 / 138), gpa: (2.0 / 4.0), attendance: (75 / 100), years: (1.0) }[type];
         const ratio = parseFloat(value) / max;
         if (type === "years") {
@@ -380,13 +334,11 @@ function updateQuickStatus() {
     const gpa = parseFloat(document.getElementById("req-gpa").value) || 0;
     const att = parseFloat(document.getElementById("req-attendance").value) || 0;
     const years = parseFloat(document.getElementById("req-years").value) || 0;
-
     const set = (id, label, pass) => {
         const el = document.getElementById(id);
         el.textContent = label;
         el.className = "stat-item " + (pass ? "pass" : "fail");
     };
-
     if (hours > 0) set("stat-hours", `${hours >= 138 ? "✅" : "❌"} Credit Hours: ${hours}/138`, hours >= 138);
     if (gpa > 0) set("stat-gpa", `${gpa >= 2.0 ? "✅" : "❌"} GPA: ${gpa}/4.0`, gpa >= 2.0);
     if (att > 0) set("stat-att", `${att >= 75 ? "✅" : "❌"} Attendance: ${att}%`, att >= 75);
@@ -399,34 +351,22 @@ async function checkRequirements() {
     const gpa = parseFloat(document.getElementById("req-gpa").value) || 0;
     const att = parseFloat(document.getElementById("req-attendance").value) || 0;
     const years = parseFloat(document.getElementById("req-years").value) || 0;
-
     if (!hours && !gpa && !att && !years) {
         alert("من فضلك أدخل بياناتك الأكاديمية أولاً");
         return;
     }
-
     const btn = document.getElementById("check-btn");
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner"></span> جاري التحليل بالـ AI...`;
-
     document.getElementById("result-placeholder").style.display = "none";
     document.getElementById("result-content").style.display = "none";
-
     try {
         const res = await fetch(API_BASE + "/check-requirements", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                name: name,
-                credit_hours: hours,
-                gpa: gpa,
-                attendance: att,
-                years: years
-            })
+            body: JSON.stringify({ name, credit_hours: hours, gpa, attendance: att, years })
         });
-
         const data = await res.json();
-
         if (data.error) {
             document.getElementById("result-placeholder").style.display = "flex";
             document.getElementById("result-placeholder").querySelector("p").textContent = "⚠️ " + data.error;
@@ -434,22 +374,18 @@ async function checkRequirements() {
             const verdict = document.getElementById("verdict-badge");
             const resultText = document.getElementById("result-text");
             const resultContent = document.getElementById("result-content");
-
             verdict.textContent = data.can_graduate
                 ? "🎓 مؤهل للتخرج — Eligible to Graduate"
                 : "📚 غير مؤهل بعد — Not Eligible Yet";
             verdict.className = "verdict-badge " + (data.can_graduate ? "can-graduate" : "cannot-graduate");
-
             resultText.textContent = data.analysis;
             resultContent.style.display = "flex";
         }
-
     } catch (err) {
         document.getElementById("result-placeholder").style.display = "flex";
         document.getElementById("result-placeholder").querySelector("p").textContent =
             "⚠️ Cannot connect to server. Make sure app.py is running.";
     }
-
     btn.disabled = false;
     btn.innerHTML = "<span>🔍 تحليل بـ AI</span>";
 }
@@ -460,6 +396,5 @@ async function checkRequirements() {
 document.addEventListener("DOMContentLoaded", () => {
     checkHealth();
     checkAuth();
-    // Re-check every 10 seconds
     setInterval(checkHealth, 10000);
 });
