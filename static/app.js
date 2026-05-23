@@ -303,6 +303,7 @@ async function sendMessage() {
     showTyping();
 
     try {
+        // إرسال الطلب إلى مسار الـ chat في الباك إند
         const res = await fetch(API_BASE + "/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -315,13 +316,21 @@ async function sendMessage() {
             return;
         }
 
+        // استقبال الرد اللي راجع من _handle_chat
         const data = await res.json();
         removeTyping();
 
         if (data.error) {
+            // في حالة وجود خطأ (مثل 429 أو 500)
             appendMessage("⚠️ Error: " + data.error, "bot");
         } else {
+            // عرض الـ reply اللي راجع من الباك إند
             appendMessage(data.reply, "bot");
+            
+            // تحديث القائمة الجانبية إذا كانت هذه الجلسة جديدة
+            if (!allSessions.some(s => s.session_id === SESSION_ID)) {
+                loadChats(true);
+            }
         }
     } catch (err) {
         removeTyping();
@@ -331,12 +340,6 @@ async function sendMessage() {
     btn.disabled = false;
     input.focus();
 }
-
-function sendQuick(text) {
-    document.getElementById("chat-input").value = text;
-    sendMessage();
-}
-
 function handleKey(e) {
     // Auto-resize textarea
     const ta = document.getElementById("chat-input");
