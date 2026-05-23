@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة إدارة Sphinx University</title>
+  <style>
+    :root {
+      --primary: #1a237e;
+      --primary-light: #3949ab;
+      --accent: #ffd600;
+      --danger: #e53935;
+      --success: #43a047;
+      --warning: #fb8c00;
+      --bg: #f0f2f8;
+      --card: #ffffff;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 240px;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      padding: 24px 20px;
+      background: rgba(0,0,0,0.2);
+      text-align: center;
+    }
+    .sidebar-logo h2 { font-size: 1.1rem; font-weight: 700; }
+    .sidebar-logo p { font-size: 0.75rem; opacity: 0.7; margin-top: 4px; }
+
+    .sidebar-nav { flex: 1; padding: 16px 0; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 20px; cursor: pointer;
+      transition: background 0.2s; font-size: 0.9rem;
+      border-right: 3px solid transparent;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.1); }
+    .nav-item.active {
+      background: rgba(255,255,255,0.15);
+      border-right-color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-item .icon { font-size: 1.1rem; width: 22px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid rgba(255,255,255,0.15);
+    }
+    .logout-btn {
+      width: 100%; padding: 10px; background: var(--danger);
+      color: #fff; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.88rem; font-weight: 600;
+    }
+    .logout-btn:hover { background: #c62828; }
+
+    /* ── Main Content ── */
+    .main {
+      flex: 1; padding: 28px; overflow-y: auto;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .page-header {
+      margin-bottom: 24px;
+    }
+    .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+    .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+    /* ── Stat Cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card); border-radius: 12px;
+      padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+      display: flex; align-items: center; gap: 14px;
+    }
+    .stat-icon {
+      width: 48px; height: 48px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+    }
+    .stat-icon.blue { background: #e3f2fd; }
+    .stat-icon.green { background: #e8f5e9; }
+    .stat-icon.orange { background: #fff3e0; }
+    .stat-icon.purple { background: #f3e5f5; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card); border-radius: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+      margin-bottom: 20px;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h3 { font-size: 1rem; font-weight: 600; color: var(--primary); }
+    .card-body { padding: 20px; }
+
+    /* ── Form ── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block; font-size: 0.84rem;
+      font-weight: 600; color: var(--text); margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 0.9rem; font-family: inherit;
+      transition: border-color 0.2s;
+      background: #fafafa;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none; border-color: var(--primary-light);
+      background: #fff;
+    }
+    .form-group textarea { resize: vertical; min-height: 90px; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 9px 18px; border: none; border-radius: 8px;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #388e3c; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #c62828; }
+    .btn-warning { background: var(--warning); color: #fff; }
+    .btn-warning:hover { background: #e65100; }
+    .btn-sm { padding: 5px 11px; font-size: 0.8rem; }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--primary);
+      color: var(--primary);
+    }
+    .btn-outline:hover { background: var(--primary); color: #fff; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    thead th {
+      background: #f8fafc; padding: 10px 14px;
+      text-align: right; font-weight: 600;
+      color: var(--muted); border-bottom: 1px solid var(--border);
+    }
+    tbody td {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #f8fafc; }
+
+    .badge {
+      display: inline-block; padding: 2px 9px;
+      border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-active { background: #e8f5e9; color: var(--success); }
+    .badge-inactive { background: #ffebee; color: var(--danger); }
+
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ── Textarea (chatbot.txt editor) ── */
+    .txt-editor {
+      width: 100%; min-height: 380px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem; line-height: 1.6;
+      padding: 14px; border: 1px solid var(--border);
+      border-radius: 8px; resize: vertical;
+      background: #fafafa;
+    }
+    .txt-editor:focus { outline: none; border-color: var(--primary-light); background: #fff; }
+
+    /* ── Toast ── */
+    .toast-container {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      padding: 12px 22px; border-radius: 10px;
+      font-size: 0.9rem; font-weight: 600; color: #fff;
+      animation: fadeInDown 0.3s ease;
+      pointer-events: none;
+    }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+    .toast.info { background: var(--primary-light); }
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card); border-radius: 14px;
+      padding: 28px; width: 92%; max-width: 520px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 18px; color: var(--primary); }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+    /* ── Loading ── */
+    .loading {
+      text-align: center; padding: 40px;
+      color: var(--muted); font-size: 0.9rem;
+    }
+
+    .empty-state {
+      text-align: center; padding: 40px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+    /* truncate long text in table */
+    .text-truncate {
+      max-width: 220px; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>✏️ تعديل المعلومة</h3>
+    <input type="hidden" id="editId" />
+    <div class="form-row">
+      <div class="form-group">
+        <label>التصنيف</label>
+        <input type="text" id="editCategory" placeholder="مثال: أكاديمي، مالي..." />
+      </div>
+      <div class="form-group">
+        <label>العنوان</label>
+        <input type="text" id="editTitle" placeholder="عنوان المعلومة" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>المحتوى</label>
+      <textarea id="editContent" rows="5" placeholder="محتوى المعلومة..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveEdit()">💾 حفظ التعديلات</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>🎓 Sphinx Admin</h2>
+      <p>لوحة إدارة الجامعة</p>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+        <span class="icon">📊</span> الرئيسية
+      </div>
+      <div class="nav-item" onclick="showPage('knowledge')" id="nav-knowledge">
+        <span class="icon">📚</span> قاعدة المعرفة
+      </div>
+      <div class="nav-item" onclick="showPage('txteditor')" id="nav-txteditor">
+        <span class="icon">📄</span> ملف chatbot.txt
+      </div>
+      <div class="nav-item" onclick="showPage('users')" id="nav-users">
+        <span class="icon">👥</span> المستخدمون
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" onclick="adminLogout()">🚪 تسجيل الخروج</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ── Dashboard ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1>📊 لوحة التحكم</h1>
+        <p>نظرة عامة على النظام</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon blue">👥</div>
+          <div>
+            <div class="stat-value" id="stat-users">—</div>
+            <div class="stat-label">إجمالي المستخدمين</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">💬</div>
+          <div>
+            <div class="stat-value" id="stat-chats">—</div>
+            <div class="stat-label">إجمالي المحادثات</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon orange">📚</div>
+          <div>
+            <div class="stat-value" id="stat-knowledge">—</div>
+            <div class="stat-label">إجمالي المعلومات</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">✅</div>
+          <div>
+            <div class="stat-value" id="stat-active">—</div>
+            <div class="stat-label">معلومات مفعّلة</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>⚡ إجراءات سريعة</h3>
+        </div>
+        <div class="card-body" style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="showPage('knowledge')">➕ إضافة معلومة جديدة</button>
+          <button class="btn btn-success" onclick="showPage('txteditor')">📝 تعديل chatbot.txt</button>
+          <button class="btn btn-outline" onclick="loadStats()">🔄 تحديث الإحصائيات</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Knowledge Base ── -->
+    <div class="page" id="page-knowledge">
+      <div class="page-header">
+        <h1>📚 قاعدة المعرفة</h1>
+        <p>إضافة وتعديل المعلومات التي يستخدمها الشات بوت</p>
+      </div>
+
+      <!-- Add Form -->
+      <div class="card">
+        <div class="card-header">
+          <h3>➕ إضافة معلومة جديدة</h3>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>التصنيف</label>
+              <input type="text" id="newCategory" placeholder="مثال: أكاديمي، مالي، قسم الهندسة..." />
+            </div>
+            <div class="form-group">
+              <label>العنوان *</label>
+              <input type="text" id="newTitle" placeholder="عنوان المعلومة" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>المحتوى *</label>
+            <textarea id="newContent" rows="4" placeholder="اكتب المعلومة بالتفصيل هنا..."></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="addEntry()">💾 حفظ المعلومة</button>
+        </div>
+      </div>
+
+      <!-- Entries Table -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📋 المعلومات المحفوظة</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadEntries()">🔄 تحديث</button>
+        </div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table id="entriesTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>التصنيف</th>
+                  <th>العنوان</th>
+                  <th>المحتوى</th>
+                  <th>الحالة</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="entriesBody">
+                <tr><td colspan="6" class="loading">⏳ جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── chatbot.txt Editor ── -->
+    <div class="page" id="page-txteditor">
+      <div class="page-header">
+        <h1>📄 تعديل chatbot.txt</h1>
+        <p>تعديل مباشر لملف المعرفة الأساسي</p>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>📝 محتوى الملف</h3>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="loadTxt()">🔄 تحديث</button>
+            <button class="btn btn-success btn-sm" onclick="saveTxt()">💾 حفظ</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p style="font-size:0.82rem; color:var(--muted); margin-bottom:10px;">
+            ⚠️ هذا الملف هو المصدر الأساسي للمعرفة. أي تعديل يؤثر فوراً على الشات بوت.
+          </p>
+          <textarea class="txt-editor" id="txtContent" placeholder="محتوى chatbot.txt..."></textarea>
+          <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+            <button class="btn btn-success" onclick="saveTxt()">💾 حفظ التغييرات</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Users ── -->
+    <div class="page" id="page-users">
+      <div class="page-header">
+        <h1>👥 المستخدمون</h1>
+        <p>إدارة حسابات الطلاب المسجلين</p>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>قائمة المستخدمين</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadUsers()">🔄 تحديث</button>
+        </div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>اسم المستخدم</th>
+                  <th>عدد المحادثات</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="usersBody">
+                <tr><td colspan="4" class="loading">⏳ جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // ── Navigation ──
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    document.getElementById('nav-' + name).classList.add('active');
+
+    if (name === 'dashboard') loadStats();
+    if (name === 'knowledge') loadEntries();
+    if (name === 'txteditor') loadTxt();
+    if (name === 'users') loadUsers();
+  }
+
+  // ── Toast ──
+  function toast(msg, type = 'info') {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  // ── Logout ──
+  async function adminLogout() {
+    await fetch('/logout', { method: 'POST', credentials: 'include' });
+    window.location.href = '/';
+  }
+
+  // ── Stats ──
+  async function loadStats() {
+    try {
+      const r = await fetch('/admin/stats', { credentials: 'include' });
+      const d = await r.json();
+      if (d.success) {
+        document.getElementById('stat-users').textContent = d.stats.total_users;
+        document.getElementById('stat-chats').textContent = d.stats.total_chats;
+        document.getElementById('stat-knowledge').textContent = d.stats.total_knowledge;
+        document.getElementById('stat-active').textContent = d.stats.active_knowledge;
+      }
+    } catch (e) { toast('خطأ في تحميل الإحصائيات', 'error'); }
+  }
+
+  // ── Knowledge Entries ──
+  let allEntries = [];
+
+  async function loadEntries() {
+    document.getElementById('entriesBody').innerHTML = '<tr><td colspan="6" class="loading">⏳ جارٍ التحميل...</td></tr>';
+    try {
+      const r = await fetch('/admin/knowledge', { credentials: 'include' });
+      const d = await r.json();
+      allEntries = d.entries || [];
+      renderEntries();
+    } catch (e) {
+      toast('خطأ في تحميل المعلومات', 'error');
+    }
+  }
+
+  function renderEntries() {
+    const tbody = document.getElementById('entriesBody');
+    if (!allEntries.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">📭</div><p>لا توجد معلومات بعد</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = allEntries.map((e, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><span style="background:#e3f2fd;color:#1a237e;padding:2px 9px;border-radius:12px;font-size:0.78rem;">${e.category}</span></td>
+        <td class="text-truncate" title="${e.title}">${e.title}</td>
+        <td class="text-truncate" title="${e.content}">${e.content}</td>
+        <td>
+          <span class="badge ${e.is_active ? 'badge-active' : 'badge-inactive'}">
+            ${e.is_active ? '✅ مفعّل' : '❌ معطّل'}
+          </span>
+        </td>
+        <td>
+          <div class="actions">
+            <button class="btn btn-warning btn-sm" onclick="openEdit(${e.id})">✏️ تعديل</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleEntry(${e.id})">🔄 تبديل</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteEntry(${e.id})">🗑️ حذف</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function addEntry() {
+    const category = document.getElementById('newCategory').value.trim() || 'General';
+    const title = document.getElementById('newTitle').value.trim();
+    const content = document.getElementById('newContent').value.trim();
+
+    if (!title || !content) { toast('العنوان والمحتوى مطلوبان ⚠️', 'error'); return; }
+
+    try {
+      const r = await fetch('/admin/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ category, title, content })
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast('✅ تمت الإضافة بنجاح!', 'success');
+        document.getElementById('newCategory').value = '';
+        document.getElementById('newTitle').value = '';
+        document.getElementById('newContent').value = '';
+        loadEntries();
+      } else {
+        toast(d.error || 'خطأ في الإضافة', 'error');
+      }
+    } catch (e) { toast('خطأ في الاتصال', 'error'); }
+  }
+
+  async function deleteEntry(id) {
+    if (!confirm('هل أنت متأكد من حذف هذه المعلومة؟')) return;
+    try {
+      const r = await fetch(`/admin/knowledge/${id}`, { method: 'DELETE', credentials: 'include' });
+      const d = await r.json();
+      if (d.success) { toast('🗑️ تم الحذف', 'info'); loadEntries(); }
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ في الحذف', 'error'); }
+  }
+
+  async function toggleEntry(id) {
+    try {
+      const r = await fetch(`/admin/knowledge/${id}/toggle`, { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      if (d.success) { toast(d.message, 'info'); loadEntries(); }
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ', 'error'); }
+  }
+
+  // ── Edit Modal ──
+  function openEdit(id) {
+    const entry = allEntries.find(e => e.id === id);
+    if (!entry) return;
+    document.getElementById('editId').value = entry.id;
+    document.getElementById('editCategory').value = entry.category;
+    document.getElementById('editTitle').value = entry.title;
+    document.getElementById('editContent').value = entry.content;
+    document.getElementById('editModal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('editModal').classList.remove('open');
+  }
+
+  async function saveEdit() {
+    const id = document.getElementById('editId').value;
+    const category = document.getElementById('editCategory').value.trim() || 'General';
+    const title = document.getElementById('editTitle').value.trim();
+    const content = document.getElementById('editContent').value.trim();
+
+    if (!title || !content) { toast('العنوان والمحتوى مطلوبان', 'error'); return; }
+
+    try {
+      const r = await fetch(`/admin/knowledge/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ category, title, content })
+      });
+      const d = await r.json();
+      if (d.success) { toast('✅ تم التحديث!', 'success'); closeModal(); loadEntries(); }
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ في التحديث', 'error'); }
+  }
+
+  // Close modal on overlay click
+  document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // ── chatbot.txt ──
+  async function loadTxt() {
+    try {
+      const r = await fetch('/admin/chatbot-txt', { credentials: 'include' });
+      const d = await r.json();
+      if (d.success) document.getElementById('txtContent').value = d.content;
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ في تحميل الملف', 'error'); }
+  }
+
+  async function saveTxt() {
+    const content = document.getElementById('txtContent').value;
+    try {
+      const r = await fetch('/admin/chatbot-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ content })
+      });
+      const d = await r.json();
+      if (d.success) toast(d.message, 'success');
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ في الحفظ', 'error'); }
+  }
+
+  // ── Users ──
+  async function loadUsers() {
+    document.getElementById('usersBody').innerHTML = '<tr><td colspan="4" class="loading">⏳ جارٍ التحميل...</td></tr>';
+    try {
+      const r = await fetch('/admin/users', { credentials: 'include' });
+      const d = await r.json();
+      const users = d.users || [];
+      if (!users.length) {
+        document.getElementById('usersBody').innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="icon">👥</div><p>لا يوجد مستخدمون</p></div></td></tr>';
+        return;
+      }
+      document.getElementById('usersBody').innerHTML = users.map((u, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td><strong>${u.username}</strong></td>
+          <td>${u.chat_count}</td>
+          <td>
+            <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${u.username}')">🗑️ حذف</button>
+          </td>
+        </tr>
+      `).join('');
+    } catch (e) { toast('خطأ في تحميل المستخدمين', 'error'); }
+  }
+
+  async function deleteUser(id, name) {
+    if (!confirm(`هل أنت متأكد من حذف المستخدم "${name}"؟ سيتم حذف جميع محادثاته أيضاً.`)) return;
+    try {
+      const r = await fetch(`/admin/users/${id}`, { method: 'DELETE', credentials: 'include' });
+      const d = await r.json();
+      if (d.success) { toast('تم حذف المستخدم', 'info'); loadUsers(); }
+      else toast(d.error, 'error');
+    } catch (e) { toast('خطأ في الحذف', 'error'); }
+  }
+
+  // ── Init ──
+  loadStats();
+</script>
+</body>
+</html>
